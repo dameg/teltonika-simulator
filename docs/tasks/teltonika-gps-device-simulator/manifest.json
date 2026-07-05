@@ -206,7 +206,7 @@
       "id": "TASK-016",
       "title": "Create Reusable Local Teltonika Parser Test Fixture",
       "path": "TASK-016-create-reusable-local-teltonika-parser-test-fixture",
-      "status": "ready",
+      "status": "completed",
       "workflowVersion": 2,
       "dependsOn": [
         "TASK-014"
@@ -218,7 +218,7 @@
       "id": "TASK-017",
       "title": "Implement IMEI Handshake Session Behavior",
       "path": "TASK-017-implement-imei-handshake-session-behavior",
-      "status": "blocked",
+      "status": "ready",
       "workflowVersion": 2,
       "dependsOn": [
         "TASK-002",
