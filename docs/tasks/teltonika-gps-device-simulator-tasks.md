@@ -618,7 +618,7 @@ npm test
 
 ## TASK-013: Encode Codec 8 Extended AVL Records
 
-**Status:** ready
+**Status:** done
 
 **Depends on:** TASK-011, TASK-012
 
@@ -667,7 +667,7 @@ npm test
 
 ## TASK-014: Frame Codec 8 Extended TCP AVL Packets
 
-**Status:** blocked
+**Status:** ready
 
 **Depends on:** TASK-013
 
