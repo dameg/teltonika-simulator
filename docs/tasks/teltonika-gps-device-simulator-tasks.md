@@ -667,7 +667,7 @@ npm test
 
 ## TASK-014: Frame Codec 8 Extended TCP AVL Packets
 
-**Status:** ready
+**Status:** done
 
 **Depends on:** TASK-013
 
@@ -720,7 +720,7 @@ npm test
 
 ## TASK-015: Add Dry-Run Deterministic Hex Dump Mode
 
-**Status:** blocked
+**Status:** ready
 
 **Depends on:** TASK-002, TASK-011, TASK-014
 
@@ -767,7 +767,7 @@ npm run cli -- --dry-run --host 127.0.0.1 --port 5027 --imei 123456789012345 --c
 
 ## TASK-016: Create Reusable Local Teltonika Parser Test Fixture
 
-**Status:** blocked
+**Status:** ready
 
 **Depends on:** TASK-014
 

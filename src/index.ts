@@ -21,7 +21,7 @@ export {
 export { toTeltonikaLatitude, toTeltonikaLongitude } from "./domain";
 export { buildRouteGeometry, interpolateRoutePosition, interpolateRouteProgress, loadRouteFromFile, parseRouteDefinition } from "./route";
 export { crc16Ibm, crc16IbmProtocolField } from "./codec-crc";
-export { encodeCodec8ExtendedRecord } from "./codec8-extended";
+export { encodeCodec8ExtendedPacket, encodeCodec8ExtendedRecord } from "./codec8-extended";
 export type {
   AvlGpsElement,
   AvlIoElement,

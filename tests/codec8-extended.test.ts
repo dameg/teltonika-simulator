@@ -1,33 +1,33 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
-import { encodeCodec8ExtendedRecord } from "../src";
+import { crc16Ibm, encodeCodec8ExtendedPacket, encodeCodec8ExtendedRecord } from "../src";
 import type { AvlRecord } from "../src";
+
+const baseRecord = {
+  timestampMs: 1_700_000_000_000,
+  priority: 1,
+  gps: {
+    longitude: -1_512_099_000,
+    latitude: 546_872_000,
+    altitudeMeters: 120,
+    headingDegrees: 90,
+    satellites: 12,
+    speedKph: 42
+  },
+  eventIoId: 239,
+  io: {
+    oneByte: [{ id: 239, value: 1 }],
+    twoBytes: [{ id: 66, value: 13_800 }],
+    fourBytes: [{ id: 199, value: 123_456 }],
+    eightBytes: [{ id: 78, value: 12_345_678_901_234n }],
+    xBytes: [{ id: 256, value: new Uint8Array([0x56, 0x49, 0x4e]) }]
+  }
+} satisfies AvlRecord;
 
 describe("Codec 8 Extended AVL record encoding", () => {
   it("encodes GPS fields and grouped IO in Codec 8 Extended order", () => {
-    const record = {
-      timestampMs: 1_700_000_000_000,
-      priority: 1,
-      gps: {
-        longitude: -1_512_099_000,
-        latitude: 546_872_000,
-        altitudeMeters: 120,
-        headingDegrees: 90,
-        satellites: 12,
-        speedKph: 42
-      },
-      eventIoId: 239,
-      io: {
-        oneByte: [{ id: 239, value: 1 }],
-        twoBytes: [{ id: 66, value: 13_800 }],
-        fourBytes: [{ id: 199, value: 123_456 }],
-        eightBytes: [{ id: 78, value: 12_345_678_901_234n }],
-        xBytes: [{ id: 256, value: new Uint8Array([0x56, 0x49, 0x4e]) }]
-      }
-    } satisfies AvlRecord;
-
-    expect(encodeCodec8ExtendedRecord(record).toString("hex")).toBe(
+    expect(encodeCodec8ExtendedRecord(baseRecord).toString("hex")).toBe(
       [
         "0000018bcfe56800",
         "01",
@@ -73,6 +73,40 @@ describe("Codec 8 Extended AVL record encoding", () => {
     expect(encodeCodec8ExtendedRecord(record).toString("hex")).toBe(
       "0000000000000000000000000000000000000000000000000000000000000000000000000000"
     );
+  });
+
+  it("frames one record in a TCP AVL packet with length and CRC over the data field", () => {
+    const packet = encodeCodec8ExtendedPacket([baseRecord]);
+    const dataLength = packet.readUInt32BE(4);
+    const dataField = packet.subarray(8, 8 + dataLength);
+
+    expect(packet.subarray(0, 4)).toEqual(Buffer.alloc(4));
+    expect(dataLength).toBe(packet.byteLength - 12);
+    expect(dataField[0]).toBe(0x8e);
+    expect(dataField[1]).toBe(1);
+    expect(dataField[dataField.length - 1]).toBe(1);
+    expect(packet.readUInt32BE(8 + dataLength)).toBe(crc16Ibm(dataField));
+  });
+
+  it("frames multiple records with matching first and repeated record counts", () => {
+    const secondRecord = {
+      ...baseRecord,
+      timestampMs: baseRecord.timestampMs + 1_000,
+      gps: { ...baseRecord.gps, speedKph: 43 }
+    } satisfies AvlRecord;
+
+    const packet = encodeCodec8ExtendedPacket([baseRecord, secondRecord]);
+    const dataLength = packet.readUInt32BE(4);
+    const dataField = packet.subarray(8, 8 + dataLength);
+
+    expect(dataField[0]).toBe(0x8e);
+    expect(dataField[1]).toBe(2);
+    expect(dataField[dataField.length - 1]).toBe(2);
+    expect(packet.readUInt32BE(8 + dataLength)).toBe(crc16Ibm(dataField));
+  });
+
+  it("rejects empty packets", () => {
+    expect(() => encodeCodec8ExtendedPacket([])).toThrow("packet must contain from 1 to 255 AVL records");
   });
 
   it("rejects values that cannot fit their protocol fields", () => {

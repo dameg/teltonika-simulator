@@ -1,4 +1,25 @@
 import type { AvlIoElement, AvlRecord } from "./domain";
+import { crc16IbmProtocolField } from "./codec-crc";
+
+const codec8ExtendedId = 0x8e;
+
+export function encodeCodec8ExtendedPacket(records: readonly AvlRecord[]): Buffer {
+  if (records.length === 0 || records.length > 0xff) {
+    throw new RangeError("packet must contain from 1 to 255 AVL records");
+  }
+
+  const dataField = Buffer.concat([
+    Buffer.from([codec8ExtendedId, records.length]),
+    ...records.map(encodeCodec8ExtendedRecord),
+    Buffer.from([records.length])
+  ]);
+
+  const header = Buffer.alloc(8);
+  header.writeUInt32BE(0, 0);
+  header.writeUInt32BE(dataField.byteLength, 4);
+
+  return Buffer.concat([header, dataField, crc16IbmProtocolField(dataField)]);
+}
 
 export function encodeCodec8ExtendedRecord(record: AvlRecord): Buffer {
   const parts = [
