@@ -94,6 +94,7 @@ export type VehicleStateField =
   | "externalVoltageMv"
   | "batteryVoltageMv"
   | "isIdling"
+  | "satellites"
   | "hasGpsFix";
 
 export interface DeviceProfileDefaults {

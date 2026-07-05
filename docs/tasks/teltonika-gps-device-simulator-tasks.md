@@ -471,7 +471,7 @@ npm test
 
 ## TASK-010: Add Teltonika Device Profile Format And Default IO Mappings
 
-**Status:** ready
+**Status:** done
 
 **Depends on:** TASK-003
 
@@ -518,7 +518,7 @@ npm test
 
 ## TASK-011: Map Vehicle State To AVL GPS And IO Records
 
-**Status:** blocked
+**Status:** ready
 
 **Depends on:** TASK-004, TASK-009, TASK-010
 

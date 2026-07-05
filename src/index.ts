@@ -1,6 +1,12 @@
 import { parseConfig } from "./config";
 
 export { helpText, parseConfig } from "./config";
+export {
+  defaultCodec8ExtendedDeviceProfile,
+  deviceProfiles,
+  getDeviceProfile,
+  validateDeviceProfile
+} from "./device-profile";
 export { drivingStyleProfiles, getDrivingStyleProfile, parseDrivingStyleName } from "./driving-style";
 export {
   createDeterministicSimulationContext,
