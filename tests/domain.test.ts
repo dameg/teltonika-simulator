@@ -1,7 +1,8 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
-import type { DeviceProfile, DrivingStyleProfile, RouteDefinition, VehicleState } from "../src";
+import { toTeltonikaLatitude, toTeltonikaLongitude } from "../src";
+import type { AvlRecord, DeviceProfile, DrivingStyleProfile, RouteDefinition, VehicleState } from "../src";
 
 describe("domain models", () => {
   it("represents route metadata and ordered route points", () => {
@@ -81,5 +82,45 @@ describe("domain models", () => {
 
     expect(source).not.toMatch(/^\s*import .*["'](?:node:net|net)["']/m);
     expect(source).not.toMatch(/^\s*import .*["'].*(?:codec|packet|encoder).*["']/im);
+  });
+
+  it("represents AVL GPS, event IO, and grouped IO data", () => {
+    const record = {
+      timestampMs: 1_700_000_000_000,
+      priority: 0,
+      gps: {
+        longitude: toTeltonikaLongitude(25.2797),
+        latitude: toTeltonikaLatitude(54.6872),
+        altitudeMeters: 120,
+        headingDegrees: 90,
+        satellites: 12,
+        speedKph: 42
+      },
+      eventIoId: 239,
+      io: {
+        oneByte: [{ id: 239, value: 1 }],
+        twoBytes: [{ id: 66, value: 13_800 }],
+        fourBytes: [{ id: 199, value: 123_456 }],
+        eightBytes: [{ id: 78, value: 12_345_678_901_234n }],
+        xBytes: [{ id: 256, value: new Uint8Array([0x56, 0x49, 0x4e]) }]
+      }
+    } satisfies AvlRecord;
+
+    expect(record.gps.longitude).toBe(252_797_000);
+    expect(record.gps.latitude).toBe(546_872_000);
+    expect(record.io.xBytes[0]?.value).toEqual(new Uint8Array([0x56, 0x49, 0x4e]));
+  });
+
+  it("converts known coordinates to signed Teltonika integer values", () => {
+    expect(toTeltonikaLatitude(54.6872)).toBe(546_872_000);
+    expect(toTeltonikaLongitude(25.2797)).toBe(252_797_000);
+    expect(toTeltonikaLatitude(-33.865143)).toBe(-338_651_430);
+    expect(toTeltonikaLongitude(-151.2099)).toBe(-1_512_099_000);
+  });
+
+  it("rejects invalid coordinate ranges clearly", () => {
+    expect(() => toTeltonikaLatitude(90.000001)).toThrow("latitude must be between -90 and 90 degrees");
+    expect(() => toTeltonikaLongitude(-180.000001)).toThrow("longitude must be between -180 and 180 degrees");
+    expect(() => toTeltonikaLatitude(Number.NaN)).toThrow("latitude must be between -90 and 90 degrees");
   });
 });

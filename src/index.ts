@@ -1,7 +1,13 @@
 import { parseConfig } from "./config";
 
 export { helpText, parseConfig } from "./config";
+export { toTeltonikaLatitude, toTeltonikaLongitude } from "./domain";
 export type {
+  AvlGpsElement,
+  AvlIoElement,
+  AvlIoGroups,
+  AvlPriority,
+  AvlRecord,
   CodecName,
   DeviceIoMappingRule,
   DeviceProfile,
@@ -13,6 +19,7 @@ export type {
   RouteDefinition,
   RouteMetadata,
   RoutePoint,
+  TeltonikaCoordinate,
   VehiclePosition,
   VehicleState,
   VehicleStateField

@@ -188,7 +188,7 @@ npm test
 
 ## TASK-004: Define AVL Domain Models And Teltonika Coordinate Conversion
 
-**Status:** ready
+**Status:** done
 
 **Depends on:** TASK-001
 
