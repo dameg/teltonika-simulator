@@ -697,3 +697,15 @@ reference files unless the task explicitly requires it.
 - Keep errors explicit and actionable.
 - Preserve backward compatibility unless explicitly out of scope.
 - Be honest about failed checks, incomplete work, and uncertainty.
+
+## Tooling conventions
+
+When inspecting or displaying source-code files in the terminal, prefer:
+
+```bash
+bat --style=numbers --color=always --line-range START:END FILE
+```
+
+Avoid cat, sed, and nl for source-code display when bat is available.
+
+For logs, JSON payloads, generated files, or command output, use the most appropriate standard tool.

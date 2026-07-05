@@ -55,11 +55,11 @@ describe("dry-run packet output", () => {
     }
   });
 
-  it("writes only hex packets to stdout and keeps context on stderr", () => {
+  it("writes only hex packets to stdout and keeps context on stderr", async () => {
     const stdout = capture();
     const stderr = capture();
 
-    const exitCode = runCli([...baseArgs, "--driving-style", "normal"], {}, { stdout, stderr });
+    const exitCode = await runCli([...baseArgs, "--driving-style", "normal"], {}, { stdout, stderr });
 
     expect(exitCode).toBe(0);
     expect(stdout.text().trim().split("\n")).toHaveLength(2);
@@ -69,12 +69,29 @@ describe("dry-run packet output", () => {
   });
 
   it("keeps dry-run modules independent from net and session startup", () => {
-    const sources = [readFileSync("src/dry-run.ts", "utf8"), readFileSync("src/index.ts", "utf8")];
+    const dryRunSource = readFileSync("src/dry-run.ts", "utf8");
 
-    for (const source of sources) {
-      expect(source).not.toMatch(/^\s*import .*["'](?:node:net|net)["']/m);
-      expect(source).not.toMatch(/^\s*import .*["'].*(?:tcp|session).*["']/im);
-    }
+    expect(dryRunSource).not.toMatch(/^\s*import .*["'](?:node:net|net)["']/m);
+    expect(dryRunSource).not.toMatch(/^\s*import .*["'].*(?:tcp|session).*["']/im);
+  });
+
+  it("fails clearly when live mode is asked to run more than one IMEI", async () => {
+    await expect(
+      runCli(
+        [
+          "--host",
+          "127.0.0.1",
+          "--port",
+          "5027",
+          "--imei",
+          "123456789012345",
+          "--imei",
+          "123456789012346"
+        ],
+        {},
+        { stdout: capture(), stderr: capture() }
+      )
+    ).rejects.toThrow("Live runtime currently supports exactly one IMEI. Use one --imei or --dry-run.");
   });
 });
 

@@ -81,6 +81,29 @@ describe("IMEI handshake session behavior", () => {
     expect(fixture.avlFrames).toEqual([]);
   });
 
+  it("aborts a pending handshake before the IMEI acknowledgement arrives", async () => {
+    const fixture = await useFixture({ sendImeiResponse: false });
+    const controller = new AbortController();
+
+    const resultPromise = performImeiHandshake({
+      host: fixture.host,
+      port: fixture.port,
+      imei: "123456789012345",
+      signal: controller.signal
+    });
+
+    await fixture.waitForConnection();
+    await fixture.waitForImeiFrame();
+
+    controller.abort();
+
+    await expect(resultPromise).rejects.toMatchObject({ name: "AbortError" });
+    await waitForClientDisconnect(fixture);
+
+    expect(fixture.clientSockets).toHaveLength(0);
+    expect(fixture.avlFrames).toEqual([]);
+  });
+
   async function useFixture(options?: Parameters<typeof startTeltonikaParserFixture>[0]) {
     const fixture = await startTeltonikaParserFixture(options);
     fixtures.push(fixture);
@@ -94,4 +117,12 @@ async function closeSocket(socket: net.Socket): Promise<void> {
   }
   socket.destroy();
   await once(socket, "close");
+}
+
+async function waitForClientDisconnect(
+  fixture: Pick<TeltonikaParserFixture, "clientSockets">
+): Promise<void> {
+  while (fixture.clientSockets.length > 0) {
+    await new Promise<void>((resolve) => setTimeout(resolve, 1));
+  }
 }

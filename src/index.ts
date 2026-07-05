@@ -1,8 +1,10 @@
 import { parseConfig } from "./config";
 import { createDryRunOutput } from "./dry-run";
+import { runLiveSession } from "./live-session";
 
 export { helpText, parseConfig } from "./config";
 export { createDryRunOutput, dryRunStartTimestampMs } from "./dry-run";
+export { runLiveSession } from "./live-session";
 export {
   mapVehicleStateToAvlRecord
 } from "./avl-mapping";
@@ -61,6 +63,7 @@ export type {
 } from "./domain";
 export type { ImeiHandshakeOptions, ImeiHandshakeResult } from "./imei-handshake";
 export type { AvlPacketSendResult } from "./avl-session";
+export type { LiveSessionLogger, LiveSessionOptions, LiveSessionResult } from "./live-session";
 export type {
   DeterministicSimulationContext,
   DeterministicSimulationOptions,
@@ -80,32 +83,80 @@ export interface CliIo {
   stderr: Pick<NodeJS.WriteStream, "write">;
 }
 
-export function runCli(argv = process.argv.slice(2), env = process.env, io: CliIo = process): number {
+export async function runCli(argv = process.argv.slice(2), env = process.env, io: CliIo = process): Promise<number> {
   const result = parseConfig(argv, env);
   if (result.kind === "help") {
     io.stdout.write(`${result.help}\n`);
     return 0;
   }
 
-  if (!result.config.dryRun) {
-    throw new Error("Live TCP runtime is not implemented yet. Use --dry-run.");
+  if (result.config.dryRun) {
+    const output = createDryRunOutput(result.config);
+    if (output.stderrLines.length > 0) {
+      io.stderr.write(`${output.stderrLines.join("\n")}\n`);
+    }
+    if (output.stdoutLines.length > 0) {
+      io.stdout.write(`${output.stdoutLines.join("\n")}\n`);
+    }
+    return 0;
   }
 
-  const output = createDryRunOutput(result.config);
-  if (output.stderrLines.length > 0) {
-    io.stderr.write(`${output.stderrLines.join("\n")}\n`);
+  if (result.config.imeis.length !== 1) {
+    throw new Error("Live runtime currently supports exactly one IMEI. Use one --imei or --dry-run.");
   }
-  if (output.stdoutLines.length > 0) {
-    io.stdout.write(`${output.stdoutLines.join("\n")}\n`);
+
+  const controller = new AbortController();
+  const cleanupProcessHooks = registerTerminationHooks(controller);
+
+  try {
+    await runLiveSession({
+      host: result.config.host,
+      port: result.config.port,
+      imei: result.config.imeis[0] ?? "",
+      intervalMs: result.config.intervalMs,
+      routeFile: result.config.routeFile,
+      drivingStyle: result.config.drivingStyle,
+      seed: result.config.seed,
+      deviceProfile: result.config.deviceProfile,
+      signal: controller.signal,
+      logger: {
+        info(message) {
+          io.stderr.write(`${message}\n`);
+        },
+        error(message) {
+          io.stderr.write(`${message}\n`);
+        }
+      }
+    });
+  } finally {
+    cleanupProcessHooks();
   }
+
   return 0;
 }
 
 if (require.main === module) {
-  try {
-    process.exit(runCli());
-  } catch (error) {
+  void runCli().then(
+    (exitCode) => {
+      process.exit(exitCode);
+    },
+    (error) => {
     console.error(error instanceof Error ? error.message : String(error));
     process.exit(1);
-  }
+    }
+  );
+}
+
+function registerTerminationHooks(controller: AbortController): () => void {
+  const abort = () => {
+    controller.abort();
+  };
+
+  process.once("SIGINT", abort);
+  process.once("SIGTERM", abort);
+
+  return () => {
+    process.off("SIGINT", abort);
+    process.off("SIGTERM", abort);
+  };
 }

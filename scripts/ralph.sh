@@ -378,6 +378,34 @@ extract_result_field() {
     }
   ' "$file"
 }
+
+extract_review_result() {
+  local file="$1"
+
+  awk '
+    /^[[:space:]]*#{1,6}[[:space:]]*Result[[:space:]]*$/ {
+      in_result = 1
+      next
+    }
+
+    in_result && /^[[:space:]]*$/ {
+      next
+    }
+
+    in_result {
+      line = $0
+      gsub(/[`"]/, "", line)
+      gsub(/\*\*/, "", line)
+      sub(/^[[:space:]]*[-*][[:space:]]*/, "", line)
+      gsub(/[[:space:]]/, "", line)
+      sub(/[.,;:]$/, "", line)
+
+      print toupper(line)
+      exit
+    }
+  ' "$file"
+}
+
 changed_paths_snapshot() {
   {
     git diff --name-only
@@ -685,7 +713,8 @@ run_reviewer() {
   fi
 
   local result
-  result="$(extract_result_field "$review_file")"
+  result="$(extract_review_result "$review_file")"
+  log "Parsed reviewer result: '${result}'"
 
   case "$result" in
     PASS)

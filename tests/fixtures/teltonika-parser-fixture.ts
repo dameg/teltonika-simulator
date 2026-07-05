@@ -8,6 +8,7 @@ export interface RecordedImeiFrame {
 
 export interface TeltonikaParserFixtureOptions {
   imeiResponseByte?: number;
+  sendImeiResponse?: boolean;
   avlAcknowledgementCount?: number;
   avlAcknowledgementChunkSizes?: readonly number[];
   host?: string;
@@ -20,6 +21,7 @@ export interface TeltonikaParserFixture {
   readonly avlFrames: readonly Buffer[];
   readonly clientSockets: readonly net.Socket[];
   setImeiResponseByte(responseByte: number): void;
+  setSendImeiResponse(enabled: boolean): void;
   setAvlAcknowledgementCount(count: number): void;
   setAvlAcknowledgementChunkSizes(chunkSizes: readonly number[]): void;
   waitForConnection(count?: number): Promise<net.Socket>;
@@ -40,6 +42,7 @@ export async function startTeltonikaParserFixture(
   const socketBuffers = new Map<net.Socket, Buffer>();
   let imeiResponseByte = options.imeiResponseByte ?? 0x01;
   assertByte(imeiResponseByte, "IMEI response byte");
+  let sendImeiResponse = options.sendImeiResponse ?? true;
   let avlAcknowledgementCount = options.avlAcknowledgementCount ?? 1;
   let avlAcknowledgementChunkSizes = normalizeChunkSizes(options.avlAcknowledgementChunkSizes);
 
@@ -88,6 +91,9 @@ export async function startTeltonikaParserFixture(
     setImeiResponseByte(responseByte) {
       assertByte(responseByte, "IMEI response byte");
       imeiResponseByte = responseByte;
+    },
+    setSendImeiResponse(enabled) {
+      sendImeiResponse = enabled;
     },
     setAvlAcknowledgementCount(count) {
       assertAckCount(count);
@@ -145,7 +151,9 @@ export async function startTeltonikaParserFixture(
         const rawFrame = Buffer.from(buffer.subarray(offset, offset + frameLength));
         const imei = rawFrame.subarray(2).toString("ascii");
         imeiFrames.push({ rawFrame, imei });
-        socket.write(Buffer.from([imeiResponseByte]));
+        if (sendImeiResponse) {
+          socket.write(Buffer.from([imeiResponseByte]));
+        }
         events.emit("imeiFrame", imeiFrames[imeiFrames.length - 1]);
         offset += frameLength;
         continue;

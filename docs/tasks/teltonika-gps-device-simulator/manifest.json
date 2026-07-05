@@ -244,21 +244,21 @@
       "id": "TASK-019",
       "title": "Add Repeated Send Loop And Clean Shutdown",
       "path": "TASK-019-add-repeated-send-loop-and-clean-shutdown",
-      "status": "ready",
+      "status": "completed",
       "workflowVersion": 2,
       "dependsOn": [
         "TASK-011",
         "TASK-018",
         "TASK-024"
       ],
-      "attempt": 0,
+      "attempt": 1,
       "maxAttempts": 5
     },
     {
       "id": "TASK-020",
       "title": "Add Reconnectable Single-Device Runner",
       "path": "TASK-020-add-reconnectable-single-device-runner",
-      "status": "blocked",
+      "status": "ready",
       "workflowVersion": 2,
       "dependsOn": [
         "TASK-019"
