@@ -20,6 +20,7 @@ export {
 } from "./simulation";
 export { toTeltonikaLatitude, toTeltonikaLongitude } from "./domain";
 export { buildRouteGeometry, interpolateRoutePosition, interpolateRouteProgress, loadRouteFromFile, parseRouteDefinition } from "./route";
+export { crc16Ibm, crc16IbmProtocolField } from "./codec-crc";
 export type {
   AvlGpsElement,
   AvlIoElement,

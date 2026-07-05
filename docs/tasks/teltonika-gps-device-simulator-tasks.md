@@ -567,7 +567,7 @@ npm test
 
 ## TASK-012: Implement CRC-16/IBM
 
-**Status:** ready
+**Status:** done
 
 **Depends on:** TASK-001
 
@@ -618,7 +618,7 @@ npm test
 
 ## TASK-013: Encode Codec 8 Extended AVL Records
 
-**Status:** blocked
+**Status:** ready
 
 **Depends on:** TASK-011, TASK-012
 
