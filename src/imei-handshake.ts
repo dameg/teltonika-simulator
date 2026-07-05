@@ -46,6 +46,7 @@ export async function performImeiHandshake(options: ImeiHandshakeOptions): Promi
       if (ack === 0x01) {
         settled = true;
         cleanup();
+        socket.pause();
         resolve({ kind: "accepted", socket });
         return;
       }

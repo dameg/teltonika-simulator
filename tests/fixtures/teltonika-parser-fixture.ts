@@ -9,6 +9,7 @@ export interface RecordedImeiFrame {
 export interface TeltonikaParserFixtureOptions {
   imeiResponseByte?: number;
   avlAcknowledgementCount?: number;
+  avlAcknowledgementChunkSizes?: readonly number[];
   host?: string;
 }
 
@@ -20,6 +21,7 @@ export interface TeltonikaParserFixture {
   readonly clientSockets: readonly net.Socket[];
   setImeiResponseByte(responseByte: number): void;
   setAvlAcknowledgementCount(count: number): void;
+  setAvlAcknowledgementChunkSizes(chunkSizes: readonly number[]): void;
   waitForConnection(count?: number): Promise<net.Socket>;
   waitForImeiFrame(count?: number): Promise<RecordedImeiFrame>;
   waitForAvlFrame(count?: number): Promise<Buffer>;
@@ -39,6 +41,7 @@ export async function startTeltonikaParserFixture(
   let imeiResponseByte = options.imeiResponseByte ?? 0x01;
   assertByte(imeiResponseByte, "IMEI response byte");
   let avlAcknowledgementCount = options.avlAcknowledgementCount ?? 1;
+  let avlAcknowledgementChunkSizes = normalizeChunkSizes(options.avlAcknowledgementChunkSizes);
 
   const server = net.createServer((socket) => {
     clientSockets.push(socket);
@@ -89,6 +92,9 @@ export async function startTeltonikaParserFixture(
     setAvlAcknowledgementCount(count) {
       assertAckCount(count);
       avlAcknowledgementCount = count;
+    },
+    setAvlAcknowledgementChunkSizes(chunkSizes) {
+      avlAcknowledgementChunkSizes = normalizeChunkSizes(chunkSizes);
     },
     waitForConnection(count = 1) {
       return waitForCount(clientSockets, count, "connection");
@@ -164,7 +170,7 @@ export async function startTeltonikaParserFixture(
 
       const rawFrame = Buffer.from(buffer.subarray(offset, offset + frameLength));
       avlFrames.push(rawFrame);
-      socket.write(avlAckBuffer(avlAcknowledgementCount));
+      void writeChunks(socket, avlAckBuffer(avlAcknowledgementCount), avlAcknowledgementChunkSizes);
       events.emit("avlFrame", rawFrame);
       offset += frameLength;
     }
@@ -189,6 +195,25 @@ export async function startTeltonikaParserFixture(
   }
 }
 
+async function writeChunks(socket: net.Socket, buffer: Buffer, chunkSizes: readonly number[]): Promise<void> {
+  let offset = 0;
+
+  for (const chunkSize of chunkSizes) {
+    if (offset >= buffer.length) {
+      return;
+    }
+
+    const nextOffset = Math.min(offset + chunkSize, buffer.length);
+    socket.write(buffer.subarray(offset, nextOffset));
+    offset = nextOffset;
+    await new Promise<void>((resolve) => setImmediate(resolve));
+  }
+
+  if (offset < buffer.length) {
+    socket.write(buffer.subarray(offset));
+  }
+}
+
 function avlAckBuffer(count: number): Buffer {
   assertAckCount(count);
   const buffer = Buffer.alloc(4);
@@ -206,4 +231,18 @@ function assertByte(value: number, label: string): void {
   if (!Number.isInteger(value) || value < 0 || value > 0xff) {
     throw new RangeError(`${label} must be an unsigned 8-bit integer`);
   }
+}
+
+function normalizeChunkSizes(chunkSizes: readonly number[] | undefined): number[] {
+  if (!chunkSizes || chunkSizes.length === 0) {
+    return [4];
+  }
+
+  for (const chunkSize of chunkSizes) {
+    if (!Number.isInteger(chunkSize) || chunkSize < 1) {
+      throw new RangeError("AVL acknowledgement chunk sizes must be positive integers");
+    }
+  }
+
+  return [...chunkSizes];
 }

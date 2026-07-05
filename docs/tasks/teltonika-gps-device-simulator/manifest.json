@@ -231,7 +231,7 @@
       "id": "TASK-018",
       "title": "Send AVL Packets And Validate Accepted-Record Acknowledgements",
       "path": "TASK-018-send-avl-packets-and-validate-accepted-record-acknowledgements",
-      "status": "ready",
+      "status": "completed",
       "workflowVersion": 2,
       "dependsOn": [
         "TASK-014",
@@ -244,7 +244,7 @@
       "id": "TASK-019",
       "title": "Add Repeated Send Loop And Clean Shutdown",
       "path": "TASK-019-add-repeated-send-loop-and-clean-shutdown",
-      "status": "blocked",
+      "status": "ready",
       "workflowVersion": 2,
       "dependsOn": [
         "TASK-011",
