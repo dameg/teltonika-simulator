@@ -2,7 +2,7 @@ import { parseConfig } from "./config";
 
 export { helpText, parseConfig } from "./config";
 export { toTeltonikaLatitude, toTeltonikaLongitude } from "./domain";
-export { loadRouteFromFile, parseRouteDefinition } from "./route";
+export { buildRouteGeometry, interpolateRoutePosition, interpolateRouteProgress, loadRouteFromFile, parseRouteDefinition } from "./route";
 export type {
   AvlGpsElement,
   AvlIoElement,
@@ -17,9 +17,12 @@ export type {
   DrivingEventType,
   DrivingStyleName,
   DrivingStyleProfile,
+  InterpolatedRoutePosition,
   RouteDefinition,
+  RouteGeometry,
   RouteMetadata,
   RoutePoint,
+  RouteSegment,
   TeltonikaCoordinate,
   VehiclePosition,
   VehicleState,

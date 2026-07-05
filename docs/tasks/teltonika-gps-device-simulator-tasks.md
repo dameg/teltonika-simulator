@@ -285,7 +285,7 @@ npm test
 
 ## TASK-006: Implement Route Geometry And Smooth Interpolation
 
-**Status:** ready
+**Status:** done
 
 **Depends on:** TASK-005
 

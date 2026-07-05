@@ -19,6 +19,32 @@ export interface RouteDefinition {
   points: readonly RoutePoint[];
 }
 
+export interface RouteSegment {
+  start: RoutePoint;
+  end: RoutePoint;
+  distanceMeters: number;
+  startDistanceMeters: number;
+  endDistanceMeters: number;
+  headingDegrees: number;
+  speedLimitKph?: number;
+}
+
+export interface RouteGeometry {
+  route: RouteDefinition;
+  segments: readonly RouteSegment[];
+  totalDistanceMeters: number;
+}
+
+export interface InterpolatedRoutePosition {
+  latitude: number;
+  longitude: number;
+  altitudeMeters: number;
+  headingDegrees: number;
+  distanceMeters: number;
+  segmentIndex: number;
+  speedLimitKph?: number;
+}
+
 export interface DrivingStyleProfile {
   name: DrivingStyleName;
   targetAccelerationMps2: number;
