@@ -93,7 +93,7 @@ npm test
 
 ## TASK-002: Add CLI And Environment Configuration Parsing
 
-**Status:** blocked
+**Status:** ready
 
 **Depends on:** TASK-001
 
