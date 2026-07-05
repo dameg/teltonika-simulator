@@ -1,6 +1,22 @@
 import { parseConfig } from "./config";
 
 export { helpText, parseConfig } from "./config";
+export type {
+  CodecName,
+  DeviceIoMappingRule,
+  DeviceProfile,
+  DeviceProfileDefaults,
+  DrivingEvent,
+  DrivingEventType,
+  DrivingStyleName,
+  DrivingStyleProfile,
+  RouteDefinition,
+  RouteMetadata,
+  RoutePoint,
+  VehiclePosition,
+  VehicleState,
+  VehicleStateField
+} from "./domain";
 
 export function simulatorName(): string {
   return "teltonika-simulator";

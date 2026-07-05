@@ -141,7 +141,7 @@ npm run cli -- --help
 
 ## TASK-003: Define Route Driving-Style Device-Profile And Vehicle-State Domain Models
 
-**Status:** ready
+**Status:** done
 
 **Depends on:** TASK-001
 
@@ -237,7 +237,7 @@ npm test
 
 ## TASK-005: Add JSON Route Schema Validation And Loading
 
-**Status:** blocked
+**Status:** ready
 
 **Depends on:** TASK-003
 
@@ -333,7 +333,7 @@ npm test
 
 ## TASK-007: Define Driving-Style Profiles
 
-**Status:** blocked
+**Status:** ready
 
 **Depends on:** TASK-003
 
@@ -471,7 +471,7 @@ npm test
 
 ## TASK-010: Add Teltonika Device Profile Format And Default IO Mappings
 
-**Status:** blocked
+**Status:** ready
 
 **Depends on:** TASK-003
 

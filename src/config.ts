@@ -1,4 +1,4 @@
-export type DrivingStyle = "eco" | "normal" | "aggressive";
+import type { DrivingStyleName } from "./domain";
 
 export interface SimulatorConfig {
   host: string;
@@ -7,7 +7,7 @@ export interface SimulatorConfig {
   intervalMs: number;
   reconnectDelayMs: number;
   routeFile?: string;
-  drivingStyle: DrivingStyle;
+  drivingStyle: DrivingStyleName;
   seed: number;
   deviceProfile: string;
   dryRun: boolean;
@@ -194,7 +194,7 @@ function parseInteger(value: string | undefined, name: string, min: number, max 
   return parsed;
 }
 
-function parseDrivingStyle(value: string): DrivingStyle {
+function parseDrivingStyle(value: string): DrivingStyleName {
   if (value === "eco" || value === "normal" || value === "aggressive") {
     return value;
   }
