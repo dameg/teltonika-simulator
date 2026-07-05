@@ -141,7 +141,7 @@ npm run cli -- --help
 
 ## TASK-003: Define Route Driving-Style Device-Profile And Vehicle-State Domain Models
 
-**Status:** blocked
+**Status:** ready
 
 **Depends on:** TASK-001
 
@@ -188,7 +188,7 @@ npm test
 
 ## TASK-004: Define AVL Domain Models And Teltonika Coordinate Conversion
 
-**Status:** blocked
+**Status:** ready
 
 **Depends on:** TASK-001
 
@@ -567,7 +567,7 @@ npm test
 
 ## TASK-012: Implement CRC-16/IBM
 
-**Status:** blocked
+**Status:** ready
 
 **Depends on:** TASK-001
 
