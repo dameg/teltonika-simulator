@@ -3,6 +3,18 @@ import { readFileSync } from "node:fs";
 import type { InterpolatedRoutePosition, RouteDefinition, RouteGeometry, RouteMetadata, RoutePoint, RouteSegment } from "./domain";
 
 const earthRadiusMeters = 6_371_000;
+export const generatedTelemetryFallbackRoute: RouteDefinition = {
+  metadata: {
+    id: "generated-telemetry-fallback",
+    name: "Generated telemetry fallback",
+    description: "Default deterministic route used when no route file is configured"
+  },
+  points: [
+    { latitude: 54.6872, longitude: 25.2797, altitudeMeters: 120, speedLimitKph: 50 },
+    { latitude: 54.6878, longitude: 25.2811, altitudeMeters: 122, speedLimitKph: 40, stopDurationMs: 10_000 },
+    { latitude: 54.6889, longitude: 25.282, altitudeMeters: 119, speedLimitKph: 35 }
+  ]
+};
 
 export function loadRouteFromFile(filePath: string): RouteDefinition {
   let raw: string;
@@ -20,6 +32,10 @@ export function loadRouteFromFile(filePath: string): RouteDefinition {
   }
 
   return parseRouteDefinition(parsed);
+}
+
+export function resolveSimulationRoute(routeFile?: string): RouteDefinition {
+  return routeFile === undefined ? generatedTelemetryFallbackRoute : loadRouteFromFile(routeFile);
 }
 
 export function parseRouteDefinition(value: unknown): RouteDefinition {

@@ -19,7 +19,15 @@ export {
   simulationDeterminismKey
 } from "./simulation";
 export { toTeltonikaLatitude, toTeltonikaLongitude } from "./domain";
-export { buildRouteGeometry, interpolateRoutePosition, interpolateRouteProgress, loadRouteFromFile, parseRouteDefinition } from "./route";
+export {
+  buildRouteGeometry,
+  generatedTelemetryFallbackRoute,
+  interpolateRoutePosition,
+  interpolateRouteProgress,
+  loadRouteFromFile,
+  parseRouteDefinition,
+  resolveSimulationRoute
+} from "./route";
 export { crc16Ibm, crc16IbmProtocolField } from "./codec-crc";
 export { encodeCodec8ExtendedPacket, encodeCodec8ExtendedRecord } from "./codec8-extended";
 export type {

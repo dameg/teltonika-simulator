@@ -2,7 +2,15 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { buildRouteGeometry, interpolateRoutePosition, interpolateRouteProgress, loadRouteFromFile, parseRouteDefinition } from "../src";
+import {
+  buildRouteGeometry,
+  generatedTelemetryFallbackRoute,
+  interpolateRoutePosition,
+  interpolateRouteProgress,
+  loadRouteFromFile,
+  parseRouteDefinition,
+  resolveSimulationRoute
+} from "../src";
 
 const fixturesDir = join(__dirname, "fixtures");
 
@@ -32,6 +40,21 @@ describe("route loading", () => {
 
   it("fails clearly for invalid JSON", () => {
     expect(() => loadRouteFromFile(join(fixturesDir, "invalid-json.route.json"))).toThrow(/Invalid route JSON/);
+  });
+
+  it("uses the generated fallback route when no route file is supplied", () => {
+    expect(resolveSimulationRoute(undefined)).toEqual(generatedTelemetryFallbackRoute);
+  });
+
+  it("prefers an explicit route file over the generated fallback", () => {
+    const explicitRoute = loadRouteFromFile(join(fixturesDir, "city-loop.route.json"));
+
+    expect(resolveSimulationRoute(join(fixturesDir, "city-loop.route.json"))).toEqual(explicitRoute);
+    expect(resolveSimulationRoute(join(fixturesDir, "city-loop.route.json"))).not.toEqual(generatedTelemetryFallbackRoute);
+  });
+
+  it("treats an empty route path as an invalid explicit route file", () => {
+    expect(() => resolveSimulationRoute("")).toThrow(/Unable to read route file/);
   });
 
   it("fails clearly for empty routes, invalid coordinates, and malformed speed limits", () => {

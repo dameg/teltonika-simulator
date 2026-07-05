@@ -8,6 +8,7 @@ import {
   createSimulationClock,
   createVehicleSimulator,
   loadRouteFromFile,
+  resolveSimulationRoute,
   simulationDeterminismKey
 } from "../src";
 import type { RouteDefinition } from "../src";
@@ -72,6 +73,15 @@ describe("deterministic simulation clock and randomness", () => {
 describe("vehicle movement simulation", () => {
   it("produces the same vehicle-state sequence for the same route, style, seed, and interval", () => {
     const route = loadRouteFromFile(join(fixturesDir, "city-loop.route.json"));
+    const options = { route, drivingStyle: "normal", seed: 99, startTimestampMs: 1_700_000_000_000, intervalMs: 1000 } as const;
+    const first = createVehicleSimulator(options);
+    const second = createVehicleSimulator(options);
+
+    expect(states(first, 20)).toEqual(states(second, 20));
+  });
+
+  it("produces the same vehicle-state sequence from the generated fallback route", () => {
+    const route = resolveSimulationRoute(undefined);
     const options = { route, drivingStyle: "normal", seed: 99, startTimestampMs: 1_700_000_000_000, intervalMs: 1000 } as const;
     const first = createVehicleSimulator(options);
     const second = createVehicleSimulator(options);

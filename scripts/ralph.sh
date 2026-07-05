@@ -322,20 +322,62 @@ extract_result_field() {
   local file="$1"
 
   awk '
+    BEGIN {
+      waiting_for_value = 0
+    }
+
     {
       line = $0
-      lower = tolower(line)
+      normalized = tolower(line)
 
-      if (lower ~ /^[[:space:]]*(status|result)[[:space:]]*:/) {
+      # Inline forms:
+      # status: READY
+      # result: PASS
+      # **Status:** READY
+      # - Result: FAIL
+      gsub(/\*\*/, "", line)
+      sub(/^[[:space:]]*[-*][[:space:]]*/, "", line)
+
+      normalized = tolower(line)
+
+      if (normalized ~ /^[[:space:]]*(status|result)[[:space:]]*:/) {
         sub(/^[^:]*:[[:space:]]*/, "", line)
+        gsub(/[`"'\'']/, "", line)
         gsub(/[[:space:]]/, "", line)
+        sub(/[.,;:]$/, "", line)
+
+        print toupper(line)
+        exit
+      }
+
+      # Section forms:
+      #
+      # ## Status
+      #
+      # READY
+      if (normalized ~ /^[[:space:]]*#{1,6}[[:space:]]*(status|result)[[:space:]]*$/) {
+        waiting_for_value = 1
+        next
+      }
+
+      if (waiting_for_value) {
+        # Skip blank lines after the heading.
+        if (line ~ /^[[:space:]]*$/) {
+          next
+        }
+
+        gsub(/[`"'\'']/, "", line)
+        gsub(/\*\*/, "", line)
+        sub(/^[[:space:]]*[-*][[:space:]]*/, "", line)
+        gsub(/[[:space:]]/, "", line)
+        sub(/[.,;:]$/, "", line)
+
         print toupper(line)
         exit
       }
     }
   ' "$file"
 }
-
 changed_paths_snapshot() {
   {
     git diff --name-only
