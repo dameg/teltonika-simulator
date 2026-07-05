@@ -1,4 +1,5 @@
 import type { DrivingStyleName } from "./domain";
+import { parseDrivingStyleName } from "./driving-style";
 
 export interface SimulatorConfig {
   host: string;
@@ -77,7 +78,7 @@ export function parseConfig(argv = process.argv.slice(2), env = process.env): Pa
       intervalMs: parseInteger(raw.intervalMs ?? "1000", "interval-ms", 1),
       reconnectDelayMs: parseInteger(raw.reconnectDelayMs ?? "5000", "reconnect-delay-ms", 1),
       routeFile: raw.routeFile,
-      drivingStyle: parseDrivingStyle(raw.drivingStyle ?? "normal"),
+      drivingStyle: parseDrivingStyleName(raw.drivingStyle ?? "normal"),
       seed: parseInteger(raw.seed ?? "1", "seed", 0),
       deviceProfile: raw.deviceProfile ?? "default-codec8e",
       dryRun: parseBoolean(raw.dryRun ?? "false", "dry-run"),
@@ -192,13 +193,6 @@ function parseInteger(value: string | undefined, name: string, min: number, max 
     throw new Error(`Invalid ${name}: expected ${min}..${max}.`);
   }
   return parsed;
-}
-
-function parseDrivingStyle(value: string): DrivingStyleName {
-  if (value === "eco" || value === "normal" || value === "aggressive") {
-    return value;
-  }
-  throw new Error("Invalid driving-style: expected eco, normal, or aggressive.");
 }
 
 function parseBoolean(value: string, name: string): boolean {

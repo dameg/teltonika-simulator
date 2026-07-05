@@ -1,6 +1,7 @@
 import { parseConfig } from "./config";
 
 export { helpText, parseConfig } from "./config";
+export { drivingStyleProfiles, getDrivingStyleProfile, parseDrivingStyleName } from "./driving-style";
 export { toTeltonikaLatitude, toTeltonikaLongitude } from "./domain";
 export { buildRouteGeometry, interpolateRoutePosition, interpolateRouteProgress, loadRouteFromFile, parseRouteDefinition } from "./route";
 export type {

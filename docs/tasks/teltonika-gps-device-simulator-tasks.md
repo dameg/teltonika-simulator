@@ -333,7 +333,7 @@ npm test
 
 ## TASK-007: Define Driving-Style Profiles
 
-**Status:** ready
+**Status:** done
 
 **Depends on:** TASK-003
 
@@ -377,7 +377,7 @@ npm test
 
 ## TASK-008: Add Deterministic Simulation Clock And Seeded Randomness
 
-**Status:** blocked
+**Status:** ready
 
 **Depends on:** TASK-006, TASK-007
 
