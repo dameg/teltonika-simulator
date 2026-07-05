@@ -2,7 +2,13 @@ import { parseConfig } from "./config";
 
 export { helpText, parseConfig } from "./config";
 export { drivingStyleProfiles, getDrivingStyleProfile, parseDrivingStyleName } from "./driving-style";
-export { createDeterministicSimulationContext, createSeededRandom, createSimulationClock, simulationDeterminismKey } from "./simulation";
+export {
+  createDeterministicSimulationContext,
+  createSeededRandom,
+  createSimulationClock,
+  createVehicleSimulator,
+  simulationDeterminismKey
+} from "./simulation";
 export { toTeltonikaLatitude, toTeltonikaLongitude } from "./domain";
 export { buildRouteGeometry, interpolateRoutePosition, interpolateRouteProgress, loadRouteFromFile, parseRouteDefinition } from "./route";
 export type {
@@ -35,7 +41,9 @@ export type {
   DeterministicSimulationOptions,
   SeededRandom,
   SimulationClock,
-  SimulationClockOptions
+  SimulationClockOptions,
+  VehicleSimulator,
+  VehicleSimulatorOptions
 } from "./simulation";
 
 export function simulatorName(): string {

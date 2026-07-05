@@ -1,9 +1,18 @@
 import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { createDeterministicSimulationContext, createSeededRandom, createSimulationClock, simulationDeterminismKey } from "../src";
+import {
+  createDeterministicSimulationContext,
+  createSeededRandom,
+  createSimulationClock,
+  createVehicleSimulator,
+  loadRouteFromFile,
+  simulationDeterminismKey
+} from "../src";
 import type { RouteDefinition } from "../src";
 
+const fixturesDir = join(__dirname, "fixtures");
 const route = {
   metadata: { id: "city-loop" },
   points: [
@@ -59,3 +68,55 @@ describe("deterministic simulation clock and randomness", () => {
     expect(source).not.toMatch(/^\s*import .*["'].*(?:codec|packet|encoder).*["']/im);
   });
 });
+
+describe("vehicle movement simulation", () => {
+  it("produces the same vehicle-state sequence for the same route, style, seed, and interval", () => {
+    const route = loadRouteFromFile(join(fixturesDir, "city-loop.route.json"));
+    const options = { route, drivingStyle: "normal", seed: 99, startTimestampMs: 1_700_000_000_000, intervalMs: 1000 } as const;
+    const first = createVehicleSimulator(options);
+    const second = createVehicleSimulator(options);
+
+    expect(states(first, 20)).toEqual(states(second, 20));
+  });
+
+  it("applies driving-style differences to speed, acceleration, braking, idling, and harsh events", () => {
+    const route = loadRouteFromFile(join(fixturesDir, "city-loop.route.json"));
+    const baseOptions = { route, seed: 11, startTimestampMs: 1_700_000_000_000, intervalMs: 1000 } as const;
+    const eco = summarize(states(createVehicleSimulator({ ...baseOptions, drivingStyle: "eco" }), 140));
+    const normal = summarize(states(createVehicleSimulator({ ...baseOptions, drivingStyle: "normal" }), 140));
+    const aggressive = summarize(states(createVehicleSimulator({ ...baseOptions, drivingStyle: "aggressive" }), 140));
+
+    expect([eco.maxSpeedKph, normal.maxSpeedKph, aggressive.maxSpeedKph]).not.toEqual([eco.maxSpeedKph, eco.maxSpeedKph, eco.maxSpeedKph]);
+    expect([eco.maxAccelerationMps2, normal.maxAccelerationMps2, aggressive.maxAccelerationMps2]).toEqual([0.8, 1.4, 2.3]);
+    expect([eco.maxBrakingMps2, normal.maxBrakingMps2, aggressive.maxBrakingMps2]).not.toEqual([0, 0, 0]);
+    expect(new Set([eco.idleCount, normal.idleCount, aggressive.idleCount]).size).toBeGreaterThan(1);
+    expect(aggressive.harshEventCount).toBeGreaterThan(eco.harshEventCount);
+  });
+
+  it("progresses smoothly between route points and represents ignition and movement states", () => {
+    const route = loadRouteFromFile(join(fixturesDir, "city-loop.route.json"));
+    const simulator = createVehicleSimulator({ route, drivingStyle: "normal", seed: 5, startTimestampMs: 1_700_000_000_000, intervalMs: 1000 });
+    const generated = states(simulator, 8);
+
+    expect(generated.every((state) => state.ignitionOn)).toBe(true);
+    expect(generated.some((state) => state.movement)).toBe(true);
+    expect(generated[2]?.position.latitude).toBeGreaterThan(generated[1]?.position.latitude ?? Number.POSITIVE_INFINITY);
+    expect(generated[2]?.position.latitude).toBeLessThan(route.points[1]?.latitude ?? Number.NEGATIVE_INFINITY);
+    expect(generated[2]?.position.longitude).toBeGreaterThan(generated[1]?.position.longitude ?? Number.POSITIVE_INFINITY);
+  });
+});
+
+function states(simulator: ReturnType<typeof createVehicleSimulator>, count: number) {
+  return Array.from({ length: count }, () => simulator.next());
+}
+
+function summarize(sequence: ReturnType<typeof states>) {
+  return {
+    maxSpeedKph: Math.max(...sequence.map((state) => state.speedKph)),
+    maxAccelerationMps2: Math.max(...sequence.map((state) => state.accelerationMps2)),
+    maxBrakingMps2: Math.max(...sequence.map((state) => state.brakingMps2)),
+    idleCount: sequence.filter((state) => state.isIdling).length,
+    harshEventCount: sequence.flatMap((state) => state.events).filter((event) => event.type === "harshAcceleration" || event.type === "harshBraking")
+      .length
+  };
+}

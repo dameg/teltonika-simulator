@@ -423,7 +423,7 @@ npm test
 
 ## TASK-009: Simulate Vehicle Movement And Driving Behavior
 
-**Status:** ready
+**Status:** done
 
 **Depends on:** TASK-008
 

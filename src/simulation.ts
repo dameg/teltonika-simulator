@@ -1,4 +1,6 @@
-import type { DrivingStyleName, RouteDefinition } from "./domain";
+import type { DrivingEvent, DrivingStyleName, RouteDefinition, RouteGeometry, RouteSegment, VehicleState } from "./domain";
+import { getDrivingStyleProfile } from "./driving-style";
+import { buildRouteGeometry, interpolateRoutePosition } from "./route";
 
 export interface SimulationClockOptions {
   startTimestampMs: number;
@@ -28,6 +30,15 @@ export interface DeterministicSimulationContext {
   key: string;
   clock: SimulationClock;
   random: SeededRandom;
+}
+
+export interface VehicleSimulatorOptions extends DeterministicSimulationOptions {
+  externalVoltageMv?: number;
+  batteryVoltageMv?: number;
+}
+
+export interface VehicleSimulator {
+  next(): VehicleState;
 }
 
 export function createSimulationClock(options: SimulationClockOptions): SimulationClock {
@@ -92,6 +103,84 @@ export function simulationDeterminismKey(options: DeterministicSimulationOptions
   return [options.route.metadata.id, options.drivingStyle, String(options.seed), String(intervalMs)].join("|");
 }
 
+export function createVehicleSimulator(options: VehicleSimulatorOptions): VehicleSimulator {
+  const context = createDeterministicSimulationContext(options);
+  const profile = getDrivingStyleProfile(options.drivingStyle);
+  const geometry = buildRouteGeometry(options.route);
+  const intervalSeconds = context.clock.intervalMs / 1000;
+  const externalVoltageMv = options.externalVoltageMv ?? 13_800;
+  const batteryVoltageMv = options.batteryVoltageMv;
+  let distanceMeters = 0;
+  let speedMps = 0;
+  let idleUntilMs = 0;
+
+  return {
+    next(): VehicleState {
+      const timestampMs = context.clock.next();
+      const position = interpolateRoutePosition(geometry, distanceMeters);
+      const stopDurationMs = idleUntilMs > timestampMs ? idleUntilMs - timestampMs : stopDurationAt(geometry, position.segmentIndex, distanceMeters);
+      const isIdling = stopDurationMs > 0 || context.random.next() < profile.idleProbability * 0.15;
+      const events: DrivingEvent[] = [];
+      const previousSpeedMps = speedMps;
+
+      if (isIdling) {
+        if (idleUntilMs <= timestampMs) {
+          const idleDurationMs =
+            stopDurationMs > 0 ? Math.round(stopDurationMs * (1 + profile.idleProbability * 5)) : Math.round(1000 + profile.idleProbability * 50_000);
+          idleUntilMs = timestampMs + idleDurationMs;
+          events.push({ type: "idleStarted", timestampMs });
+        }
+        speedMps = 0;
+      } else if (idleUntilMs > 0) {
+        idleUntilMs = 0;
+        events.push({ type: "idleEnded", timestampMs });
+      }
+
+      const speedLimitKph = position.speedLimitKph ?? 50;
+      const variation = context.random.nextBetween(-profile.speedVariationRatio, profile.speedVariationRatio);
+      const turnFactor = turnSlowdown(geometry, position.segmentIndex, profile.corneringSlowdownRatio);
+      const targetSpeedMps = isIdling ? 0 : kphToMps(Math.max(0, speedLimitKph * turnFactor * (1 + variation)));
+      const deltaMps = targetSpeedMps - previousSpeedMps;
+      const limit = deltaMps >= 0 ? profile.targetAccelerationMps2 : profile.brakingIntensityMps2;
+      speedMps = isIdling ? 0 : previousSpeedMps + clamp(deltaMps, -limit * intervalSeconds, limit * intervalSeconds);
+      const accelerationMps2 = (speedMps - previousSpeedMps) / intervalSeconds;
+      const brakingMps2 = Math.max(0, -accelerationMps2);
+
+      if (!isIdling) {
+        if (context.random.next() < profile.harshAccelerationProbability) {
+          events.push({ type: "harshAcceleration", timestampMs });
+        }
+        if (context.random.next() < profile.harshBrakingProbability) {
+          events.push({ type: "harshBraking", timestampMs });
+        }
+        distanceMeters = nextDistance(geometry, position.segmentIndex, distanceMeters, speedMps * intervalSeconds);
+      }
+
+      return {
+        timestampMs,
+        position: {
+          latitude: position.latitude,
+          longitude: position.longitude,
+          altitudeMeters: position.altitudeMeters,
+          headingDegrees: position.headingDegrees,
+          satellites: 12,
+          hasGpsFix: true
+        },
+        speedKph: Math.round(mpsToKph(speedMps) * 10) / 10,
+        accelerationMps2: Math.round(accelerationMps2 * 100) / 100,
+        brakingMps2: Math.round(brakingMps2 * 100) / 100,
+        isStopped: speedMps < 0.1,
+        isIdling,
+        ignitionOn: true,
+        movement: speedMps >= 0.1,
+        externalVoltageMv,
+        ...(batteryVoltageMv === undefined ? {} : { batteryVoltageMv }),
+        events
+      };
+    }
+  };
+}
+
 function hashSeed(seed: number | string): number {
   const text = String(seed);
   let hash = 0x811c9dc5;
@@ -107,4 +196,48 @@ function integerAtLeast(value: number, name: string, min: number): number {
     throw new Error(`${name} must be an integer greater than or equal to ${min}`);
   }
   return value;
+}
+
+function stopDurationAt(geometry: RouteGeometry, segmentIndex: number, distanceMeters: number): number {
+  const segment = geometry.segments[segmentIndex];
+  if (!segment?.end.stopDurationMs || distanceToSegmentEnd(segment, distanceMeters, geometry.totalDistanceMeters) > 1) {
+    return 0;
+  }
+  return segment.end.stopDurationMs;
+}
+
+function nextDistance(geometry: RouteGeometry, segmentIndex: number, distanceMeters: number, deltaMeters: number): number {
+  const segment = geometry.segments[segmentIndex];
+  if (segment?.end.stopDurationMs && distanceMeters < segment.endDistanceMeters && distanceMeters + deltaMeters >= segment.endDistanceMeters) {
+    return segment.endDistanceMeters;
+  }
+  return distanceMeters + deltaMeters;
+}
+
+function distanceToSegmentEnd(segment: RouteSegment, distanceMeters: number, totalDistanceMeters: number): number {
+  return segment.endDistanceMeters === totalDistanceMeters && distanceMeters >= totalDistanceMeters
+    ? 0
+    : Math.abs(segment.endDistanceMeters - (distanceMeters % totalDistanceMeters));
+}
+
+function turnSlowdown(geometry: RouteGeometry, segmentIndex: number, corneringSlowdownRatio: number): number {
+  const segment = geometry.segments[segmentIndex];
+  const next = geometry.segments[(segmentIndex + 1) % geometry.segments.length];
+  if (!segment || !next) {
+    return 1;
+  }
+  const headingDelta = Math.abs(((next.headingDegrees - segment.headingDegrees + 540) % 360) - 180);
+  return headingDelta > 30 ? corneringSlowdownRatio : 1;
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}
+
+function kphToMps(value: number): number {
+  return value / 3.6;
+}
+
+function mpsToKph(value: number): number {
+  return value * 3.6;
 }
