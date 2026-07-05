@@ -1,0 +1,307 @@
+{
+  "version": 2,
+  "workflow": "planner-implementer-reviewer",
+  "sourcePrd": "docs/teltonika-gps-device-simulator-prd.md",
+  "legacySource": "docs/tasks/teltonika-gps-device-simulator-tasks.md",
+  "tasks": [
+    {
+      "id": "TASK-001",
+      "title": "Bootstrap TypeScript Node Project",
+      "path": "TASK-001-bootstrap-typescript-node-project",
+      "status": "completed",
+      "workflowVersion": 1,
+      "dependsOn": [],
+      "attempt": 0,
+      "maxAttempts": 0
+    },
+    {
+      "id": "TASK-002",
+      "title": "Add CLI And Environment Configuration Parsing",
+      "path": "TASK-002-add-cli-and-environment-configuration-parsing",
+      "status": "completed",
+      "workflowVersion": 1,
+      "dependsOn": [
+        "TASK-001"
+      ],
+      "attempt": 0,
+      "maxAttempts": 0
+    },
+    {
+      "id": "TASK-003",
+      "title": "Define Route Driving-Style Device-Profile And Vehicle-State Domain Models",
+      "path": "TASK-003-define-route-driving-style-device-profile-and-vehicle-state-domain-models",
+      "status": "completed",
+      "workflowVersion": 1,
+      "dependsOn": [
+        "TASK-001"
+      ],
+      "attempt": 0,
+      "maxAttempts": 0
+    },
+    {
+      "id": "TASK-004",
+      "title": "Define AVL Domain Models And Teltonika Coordinate Conversion",
+      "path": "TASK-004-define-avl-domain-models-and-teltonika-coordinate-conversion",
+      "status": "completed",
+      "workflowVersion": 1,
+      "dependsOn": [
+        "TASK-001"
+      ],
+      "attempt": 0,
+      "maxAttempts": 0
+    },
+    {
+      "id": "TASK-005",
+      "title": "Add JSON Route Schema Validation And Loading",
+      "path": "TASK-005-add-json-route-schema-validation-and-loading",
+      "status": "completed",
+      "workflowVersion": 1,
+      "dependsOn": [
+        "TASK-003"
+      ],
+      "attempt": 0,
+      "maxAttempts": 0
+    },
+    {
+      "id": "TASK-006",
+      "title": "Implement Route Geometry And Smooth Interpolation",
+      "path": "TASK-006-implement-route-geometry-and-smooth-interpolation",
+      "status": "completed",
+      "workflowVersion": 1,
+      "dependsOn": [
+        "TASK-005"
+      ],
+      "attempt": 0,
+      "maxAttempts": 0
+    },
+    {
+      "id": "TASK-007",
+      "title": "Define Driving-Style Profiles",
+      "path": "TASK-007-define-driving-style-profiles",
+      "status": "completed",
+      "workflowVersion": 1,
+      "dependsOn": [
+        "TASK-003"
+      ],
+      "attempt": 0,
+      "maxAttempts": 0
+    },
+    {
+      "id": "TASK-008",
+      "title": "Add Deterministic Simulation Clock And Seeded Randomness",
+      "path": "TASK-008-add-deterministic-simulation-clock-and-seeded-randomness",
+      "status": "completed",
+      "workflowVersion": 1,
+      "dependsOn": [
+        "TASK-006",
+        "TASK-007"
+      ],
+      "attempt": 0,
+      "maxAttempts": 0
+    },
+    {
+      "id": "TASK-009",
+      "title": "Simulate Vehicle Movement And Driving Behavior",
+      "path": "TASK-009-simulate-vehicle-movement-and-driving-behavior",
+      "status": "completed",
+      "workflowVersion": 1,
+      "dependsOn": [
+        "TASK-008"
+      ],
+      "attempt": 0,
+      "maxAttempts": 0
+    },
+    {
+      "id": "TASK-010",
+      "title": "Add Teltonika Device Profile Format And Default IO Mappings",
+      "path": "TASK-010-add-teltonika-device-profile-format-and-default-io-mappings",
+      "status": "completed",
+      "workflowVersion": 1,
+      "dependsOn": [
+        "TASK-003"
+      ],
+      "attempt": 0,
+      "maxAttempts": 0
+    },
+    {
+      "id": "TASK-011",
+      "title": "Map Vehicle State To AVL GPS And IO Records",
+      "path": "TASK-011-map-vehicle-state-to-avl-gps-and-io-records",
+      "status": "completed",
+      "workflowVersion": 1,
+      "dependsOn": [
+        "TASK-004",
+        "TASK-009",
+        "TASK-010"
+      ],
+      "attempt": 0,
+      "maxAttempts": 0
+    },
+    {
+      "id": "TASK-012",
+      "title": "Implement CRC-16/IBM",
+      "path": "TASK-012-implement-crc-16-ibm",
+      "status": "completed",
+      "workflowVersion": 1,
+      "dependsOn": [
+        "TASK-001"
+      ],
+      "attempt": 0,
+      "maxAttempts": 0
+    },
+    {
+      "id": "TASK-013",
+      "title": "Encode Codec 8 Extended AVL Records",
+      "path": "TASK-013-encode-codec-8-extended-avl-records",
+      "status": "completed",
+      "workflowVersion": 1,
+      "dependsOn": [
+        "TASK-011",
+        "TASK-012"
+      ],
+      "attempt": 0,
+      "maxAttempts": 0
+    },
+    {
+      "id": "TASK-014",
+      "title": "Frame Codec 8 Extended TCP AVL Packets",
+      "path": "TASK-014-frame-codec-8-extended-tcp-avl-packets",
+      "status": "completed",
+      "workflowVersion": 1,
+      "dependsOn": [
+        "TASK-013"
+      ],
+      "attempt": 0,
+      "maxAttempts": 0
+    },
+    {
+      "id": "TASK-024",
+      "title": "Add Generated Telemetry Fallback",
+      "path": "TASK-024-add-generated-telemetry-fallback",
+      "status": "ready",
+      "workflowVersion": 2,
+      "dependsOn": [
+        "TASK-002",
+        "TASK-009"
+      ],
+      "attempt": 0,
+      "maxAttempts": 5
+    },
+    {
+      "id": "TASK-015",
+      "title": "Add Dry-Run Deterministic Hex Dump Mode",
+      "path": "TASK-015-add-dry-run-deterministic-hex-dump-mode",
+      "status": "blocked",
+      "workflowVersion": 2,
+      "dependsOn": [
+        "TASK-002",
+        "TASK-011",
+        "TASK-014",
+        "TASK-024"
+      ],
+      "attempt": 0,
+      "maxAttempts": 5
+    },
+    {
+      "id": "TASK-016",
+      "title": "Create Reusable Local Teltonika Parser Test Fixture",
+      "path": "TASK-016-create-reusable-local-teltonika-parser-test-fixture",
+      "status": "ready",
+      "workflowVersion": 2,
+      "dependsOn": [
+        "TASK-014"
+      ],
+      "attempt": 0,
+      "maxAttempts": 5
+    },
+    {
+      "id": "TASK-017",
+      "title": "Implement IMEI Handshake Session Behavior",
+      "path": "TASK-017-implement-imei-handshake-session-behavior",
+      "status": "blocked",
+      "workflowVersion": 2,
+      "dependsOn": [
+        "TASK-002",
+        "TASK-016"
+      ],
+      "attempt": 0,
+      "maxAttempts": 5
+    },
+    {
+      "id": "TASK-018",
+      "title": "Send AVL Packets And Validate Accepted-Record Acknowledgements",
+      "path": "TASK-018-send-avl-packets-and-validate-accepted-record-acknowledgements",
+      "status": "blocked",
+      "workflowVersion": 2,
+      "dependsOn": [
+        "TASK-014",
+        "TASK-017"
+      ],
+      "attempt": 0,
+      "maxAttempts": 5
+    },
+    {
+      "id": "TASK-019",
+      "title": "Add Repeated Send Loop And Clean Shutdown",
+      "path": "TASK-019-add-repeated-send-loop-and-clean-shutdown",
+      "status": "blocked",
+      "workflowVersion": 2,
+      "dependsOn": [
+        "TASK-011",
+        "TASK-018",
+        "TASK-024"
+      ],
+      "attempt": 0,
+      "maxAttempts": 5
+    },
+    {
+      "id": "TASK-020",
+      "title": "Add Reconnectable Single-Device Runner",
+      "path": "TASK-020-add-reconnectable-single-device-runner",
+      "status": "blocked",
+      "workflowVersion": 2,
+      "dependsOn": [
+        "TASK-019"
+      ],
+      "attempt": 0,
+      "maxAttempts": 5
+    },
+    {
+      "id": "TASK-021",
+      "title": "Add Multi-Device Runtime",
+      "path": "TASK-021-add-multi-device-runtime",
+      "status": "blocked",
+      "workflowVersion": 2,
+      "dependsOn": [
+        "TASK-020"
+      ],
+      "attempt": 0,
+      "maxAttempts": 5
+    },
+    {
+      "id": "TASK-022",
+      "title": "Add End-To-End Parser-Visible Tests",
+      "path": "TASK-022-add-end-to-end-parser-visible-tests",
+      "status": "blocked",
+      "workflowVersion": 2,
+      "dependsOn": [
+        "TASK-015",
+        "TASK-021"
+      ],
+      "attempt": 0,
+      "maxAttempts": 5
+    },
+    {
+      "id": "TASK-023",
+      "title": "Document CLI Usage And MVP Limits",
+      "path": "TASK-023-document-cli-usage-and-mvp-limits",
+      "status": "blocked",
+      "workflowVersion": 2,
+      "dependsOn": [
+        "TASK-022"
+      ],
+      "attempt": 0,
+      "maxAttempts": 5
+    }
+  ]
+}
