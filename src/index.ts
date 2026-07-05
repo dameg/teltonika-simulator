@@ -2,6 +2,7 @@ import { parseConfig } from "./config";
 
 export { helpText, parseConfig } from "./config";
 export { drivingStyleProfiles, getDrivingStyleProfile, parseDrivingStyleName } from "./driving-style";
+export { createDeterministicSimulationContext, createSeededRandom, createSimulationClock, simulationDeterminismKey } from "./simulation";
 export { toTeltonikaLatitude, toTeltonikaLongitude } from "./domain";
 export { buildRouteGeometry, interpolateRoutePosition, interpolateRouteProgress, loadRouteFromFile, parseRouteDefinition } from "./route";
 export type {
@@ -29,6 +30,13 @@ export type {
   VehicleState,
   VehicleStateField
 } from "./domain";
+export type {
+  DeterministicSimulationContext,
+  DeterministicSimulationOptions,
+  SeededRandom,
+  SimulationClock,
+  SimulationClockOptions
+} from "./simulation";
 
 export function simulatorName(): string {
   return "teltonika-simulator";

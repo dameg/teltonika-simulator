@@ -377,7 +377,7 @@ npm test
 
 ## TASK-008: Add Deterministic Simulation Clock And Seeded Randomness
 
-**Status:** ready
+**Status:** done
 
 **Depends on:** TASK-006, TASK-007
 
@@ -423,7 +423,7 @@ npm test
 
 ## TASK-009: Simulate Vehicle Movement And Driving Behavior
 
-**Status:** blocked
+**Status:** ready
 
 **Depends on:** TASK-008
 
