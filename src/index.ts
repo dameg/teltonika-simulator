@@ -1,10 +1,11 @@
 import { parseConfig } from "./config";
 import { createDryRunOutput } from "./dry-run";
-import { runLiveSession } from "./live-session";
+import { runMultiDeviceRuntime } from "./multi-device-runtime";
 
 export { helpText, parseConfig } from "./config";
 export { createDryRunOutput, dryRunStartTimestampMs } from "./dry-run";
 export { runLiveSession } from "./live-session";
+export { runMultiDeviceRuntime } from "./multi-device-runtime";
 export {
   mapVehicleStateToAvlRecord
 } from "./avl-mapping";
@@ -65,6 +66,11 @@ export type { ImeiHandshakeOptions, ImeiHandshakeResult } from "./imei-handshake
 export type { AvlPacketSendResult } from "./avl-session";
 export type { LiveSessionLogger, LiveSessionOptions, LiveSessionResult } from "./live-session";
 export type {
+  MultiDeviceRuntimeDeviceResult,
+  MultiDeviceRuntimeOptions,
+  MultiDeviceRuntimeResult
+} from "./multi-device-runtime";
+export type {
   DeterministicSimulationContext,
   DeterministicSimulationOptions,
   SeededRandom,
@@ -101,18 +107,14 @@ export async function runCli(argv = process.argv.slice(2), env = process.env, io
     return 0;
   }
 
-  if (result.config.imeis.length !== 1) {
-    throw new Error("Live runtime currently supports exactly one IMEI. Use one --imei or --dry-run.");
-  }
-
   const controller = new AbortController();
   const cleanupProcessHooks = registerTerminationHooks(controller);
 
   try {
-    await runLiveSession({
+    await runMultiDeviceRuntime({
       host: result.config.host,
       port: result.config.port,
-      imei: result.config.imeis[0] ?? "",
+      imeis: result.config.imeis,
       intervalMs: result.config.intervalMs,
       reconnectDelayMs: result.config.reconnectDelayMs,
       routeFile: result.config.routeFile,

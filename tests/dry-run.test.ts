@@ -75,23 +75,20 @@ describe("dry-run packet output", () => {
     expect(dryRunSource).not.toMatch(/^\s*import .*["'].*(?:tcp|session).*["']/im);
   });
 
-  it("fails clearly when live mode is asked to run more than one IMEI", async () => {
-    await expect(
-      runCli(
-        [
-          "--host",
-          "127.0.0.1",
-          "--port",
-          "5027",
-          "--imei",
-          "123456789012345",
-          "--imei",
-          "123456789012346"
-        ],
-        {},
-        { stdout: capture(), stderr: capture() }
-      )
-    ).rejects.toThrow("Live runtime currently supports exactly one IMEI. Use one --imei or --dry-run.");
+  it("accepts multiple imeis in live configuration parsing", () => {
+    const config = createConfig([
+      "--host",
+      "127.0.0.1",
+      "--port",
+      "5027",
+      "--imei",
+      "123456789012345",
+      "--imei",
+      "123456789012346"
+    ]);
+
+    expect(config.dryRun).toBe(false);
+    expect(config.imeis).toEqual(["123456789012345", "123456789012346"]);
   });
 });
 

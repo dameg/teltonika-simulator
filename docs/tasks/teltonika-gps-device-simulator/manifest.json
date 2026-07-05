@@ -270,19 +270,19 @@
       "id": "TASK-021",
       "title": "Add Multi-Device Runtime",
       "path": "TASK-021-add-multi-device-runtime",
-      "status": "ready",
+      "status": "completed",
       "workflowVersion": 2,
       "dependsOn": [
         "TASK-020"
       ],
-      "attempt": 0,
+      "attempt": 1,
       "maxAttempts": 5
     },
     {
       "id": "TASK-022",
       "title": "Add End-To-End Parser-Visible Tests",
       "path": "TASK-022-add-end-to-end-parser-visible-tests",
-      "status": "blocked",
+      "status": "ready",
       "workflowVersion": 2,
       "dependsOn": [
         "TASK-015",

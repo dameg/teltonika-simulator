@@ -4,6 +4,13 @@ import net from "node:net";
 export interface RecordedImeiFrame {
   rawFrame: Buffer;
   imei: string;
+  connectionId: number;
+}
+
+export interface RecordedAvlFrame {
+  rawFrame: Buffer;
+  connectionId: number;
+  imei: string | null;
 }
 
 export interface TeltonikaParserFixtureOptions {
@@ -19,9 +26,11 @@ export interface TeltonikaParserFixture {
   readonly port: number;
   readonly imeiFrames: readonly RecordedImeiFrame[];
   readonly avlFrames: readonly Buffer[];
+  readonly avlFrameRecords: readonly RecordedAvlFrame[];
   readonly clientSockets: readonly net.Socket[];
   setImeiResponseByte(responseByte: number): void;
   setSendImeiResponse(enabled: boolean): void;
+  sendImeiResponse(connectionId: number, responseByte: number): void;
   setAvlAcknowledgementCount(count: number): void;
   setAvlAcknowledgementChunkSizes(chunkSizes: readonly number[]): void;
   waitForConnection(count?: number): Promise<net.Socket>;
@@ -39,16 +48,26 @@ export async function startTeltonikaParserFixture(
   const clientSockets: net.Socket[] = [];
   const imeiFrames: RecordedImeiFrame[] = [];
   const avlFrames: Buffer[] = [];
+  const avlFrameRecords: RecordedAvlFrame[] = [];
   const socketBuffers = new Map<net.Socket, Buffer>();
+  const socketConnectionIds = new Map<net.Socket, number>();
+  const socketsByConnectionId = new Map<number, net.Socket>();
+  const socketImeis = new Map<net.Socket, string>();
   let imeiResponseByte = options.imeiResponseByte ?? 0x01;
+  let nextConnectionId = 1;
   assertByte(imeiResponseByte, "IMEI response byte");
   let sendImeiResponse = options.sendImeiResponse ?? true;
   let avlAcknowledgementCount = options.avlAcknowledgementCount ?? 1;
   let avlAcknowledgementChunkSizes = normalizeChunkSizes(options.avlAcknowledgementChunkSizes);
 
   const server = net.createServer((socket) => {
+    const connectionId = nextConnectionId;
+    nextConnectionId += 1;
+
     clientSockets.push(socket);
     socketBuffers.set(socket, Buffer.alloc(0));
+    socketConnectionIds.set(socket, connectionId);
+    socketsByConnectionId.set(connectionId, socket);
     events.emit("connection", socket);
 
     socket.on("data", (chunk) => {
@@ -58,6 +77,12 @@ export async function startTeltonikaParserFixture(
 
     socket.on("close", () => {
       socketBuffers.delete(socket);
+      socketImeis.delete(socket);
+      const closedConnectionId = socketConnectionIds.get(socket);
+      socketConnectionIds.delete(socket);
+      if (closedConnectionId !== undefined) {
+        socketsByConnectionId.delete(closedConnectionId);
+      }
       const index = clientSockets.indexOf(socket);
       if (index >= 0) {
         clientSockets.splice(index, 1);
@@ -87,6 +112,7 @@ export async function startTeltonikaParserFixture(
     port: address.port,
     imeiFrames,
     avlFrames,
+    avlFrameRecords,
     clientSockets,
     setImeiResponseByte(responseByte) {
       assertByte(responseByte, "IMEI response byte");
@@ -94,6 +120,15 @@ export async function startTeltonikaParserFixture(
     },
     setSendImeiResponse(enabled) {
       sendImeiResponse = enabled;
+    },
+    sendImeiResponse(connectionId, responseByte) {
+      assertByte(responseByte, "IMEI response byte");
+      const socket = socketsByConnectionId.get(connectionId);
+      if (!socket) {
+        throw new Error(`Unknown connection id: ${connectionId}`);
+      }
+
+      socket.write(Buffer.from([responseByte]));
     },
     setAvlAcknowledgementCount(count) {
       assertAckCount(count);
@@ -150,7 +185,13 @@ export async function startTeltonikaParserFixture(
 
         const rawFrame = Buffer.from(buffer.subarray(offset, offset + frameLength));
         const imei = rawFrame.subarray(2).toString("ascii");
-        imeiFrames.push({ rawFrame, imei });
+        const connectionId = socketConnectionIds.get(socket);
+        if (connectionId === undefined) {
+          throw new Error("Missing connection id for IMEI frame.");
+        }
+
+        socketImeis.set(socket, imei);
+        imeiFrames.push({ rawFrame, imei, connectionId });
         if (sendImeiResponse) {
           socket.write(Buffer.from([imeiResponseByte]));
         }
@@ -178,6 +219,16 @@ export async function startTeltonikaParserFixture(
 
       const rawFrame = Buffer.from(buffer.subarray(offset, offset + frameLength));
       avlFrames.push(rawFrame);
+      const connectionId = socketConnectionIds.get(socket);
+      if (connectionId === undefined) {
+        throw new Error("Missing connection id for AVL frame.");
+      }
+
+      avlFrameRecords.push({
+        rawFrame,
+        connectionId,
+        imei: socketImeis.get(socket) ?? null
+      });
       void writeChunks(socket, avlAckBuffer(avlAcknowledgementCount), avlAcknowledgementChunkSizes);
       events.emit("avlFrame", rawFrame);
       offset += frameLength;
