@@ -1,0 +1,28 @@
+{
+  "metadata": {
+    "id": "city-loop",
+    "name": "City loop",
+    "description": "Small deterministic test route"
+  },
+  "points": [
+    {
+      "latitude": 54.6872,
+      "longitude": 25.2797,
+      "altitudeMeters": 120,
+      "speedLimitKph": 50
+    },
+    {
+      "latitude": 54.688,
+      "longitude": 25.281,
+      "altitudeMeters": 121,
+      "speedLimitKph": 30,
+      "stopDurationMs": 15000
+    },
+    {
+      "latitude": 54.6891,
+      "longitude": 25.2824,
+      "altitudeMeters": 119,
+      "speedLimitKph": 40
+    }
+  ]
+}

@@ -2,6 +2,7 @@ import { parseConfig } from "./config";
 
 export { helpText, parseConfig } from "./config";
 export { toTeltonikaLatitude, toTeltonikaLongitude } from "./domain";
+export { loadRouteFromFile, parseRouteDefinition } from "./route";
 export type {
   AvlGpsElement,
   AvlIoElement,

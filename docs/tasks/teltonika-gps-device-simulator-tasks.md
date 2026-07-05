@@ -237,7 +237,7 @@ npm test
 
 ## TASK-005: Add JSON Route Schema Validation And Loading
 
-**Status:** ready
+**Status:** done
 
 **Depends on:** TASK-003
 
@@ -285,7 +285,7 @@ npm test
 
 ## TASK-006: Implement Route Geometry And Smooth Interpolation
 
-**Status:** blocked
+**Status:** ready
 
 **Depends on:** TASK-005
 
