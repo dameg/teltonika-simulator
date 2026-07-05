@@ -1,0 +1,16 @@
+{
+  "name": "teltonika-simulator",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "cli": "node dist/index.js"
+  },
+  "devDependencies": {
+    "@types/node": "20.19.9",
+    "typescript": "5.9.3",
+    "vitest": "4.0.18"
+  }
+}

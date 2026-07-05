@@ -39,7 +39,7 @@ No implementation-blocking questions remain for the MVP. Logging format and futu
 
 ## TASK-001: Bootstrap TypeScript Node Project
 
-**Status:** ready
+**Status:** done
 
 **Depends on:** none
 
@@ -1164,62 +1164,62 @@ npm run cli -- --help
 
 ## Traceability Matrix
 
-| PRD requirement | Covered by |
-| --------------- | ---------- |
-| TypeScript, Node.js, `net`, `Buffer`, Vitest, minimal dependencies | TASK-001 |
-| CLI and environment configuration | TASK-002 |
-| Parser host and parser port | TASK-002, TASK-023 |
-| IMEI or list of IMEIs | TASK-002, TASK-021, TASK-023 |
-| Send interval | TASK-002, TASK-008, TASK-019 |
-| Reconnect delay | TASK-002, TASK-020 |
-| Driving style and seed configuration | TASK-002, TASK-007, TASK-008, TASK-023 |
-| Teltonika device profile configuration | TASK-002, TASK-010 |
-| Route, driving-style, device-profile, and vehicle-state domain models | TASK-003 |
-| AVL domain models | TASK-004 |
-| Longitude and latitude Teltonika signed integer encoding | TASK-004, TASK-011, TASK-013 |
-| JSON route file loading | TASK-005 |
-| Route validation | TASK-005 |
-| Route geometry and heading | TASK-006 |
-| Smooth position interpolation | TASK-006, TASK-009, TASK-022 |
-| End-of-route loops to first point | TASK-006, TASK-019, TASK-023 |
-| `eco`, `normal`, and `aggressive` driving styles | TASK-007, TASK-009, TASK-023 |
-| Same route, style, seed, and interval produces same telemetry | TASK-008, TASK-009, TASK-015, TASK-019, TASK-022 |
-| Different styles produce different behavior on same route | TASK-007, TASK-009, TASK-015 |
-| Speed, acceleration, braking, stopping, idling behavior | TASK-009 |
-| Ignition and movement behavior | TASK-009, TASK-011 |
-| Harsh acceleration and harsh braking events | TASK-009, TASK-010, TASK-011 |
-| Default Codec 8 Extended device profile | TASK-010 |
-| Device profile maps ignition, movement, voltage, and events | TASK-010, TASK-011 |
-| Vehicle state maps into AVL GPS and IO values | TASK-011 |
-| Timestamp, priority, GPS element, event IO ID, and IO elements | TASK-004, TASK-011, TASK-013 |
-| CRC-16/IBM over Teltonika data field | TASK-012, TASK-014 |
-| Independent CRC vector or known packet fixture | TASK-012 |
-| Codec 8 Extended AVL record encoding | TASK-013 |
-| TCP AVL packet preamble, length, codec ID, record counts, CRC | TASK-014 |
-| Encoder supports one or more records per packet | TASK-014 |
-| Runtime default sends one AVL record per packet | TASK-019 |
-| Dry-run deterministic hex dump | TASK-015, TASK-022, TASK-023 |
-| Reusable local parser fixture | TASK-016 |
-| TCP client connection to parser | TASK-017, TASK-018, TASK-019 |
-| IMEI handshake two-byte length plus ASCII IMEI | TASK-017 |
-| IMEI acknowledgement `0x01` accepted and `0x00` rejected | TASK-017, TASK-020 |
-| Rejected IMEI stops without reconnecting | TASK-017, TASK-020 |
-| AVL send after IMEI acceptance | TASK-018 |
-| 4-byte accepted-record acknowledgement | TASK-018 |
-| Acknowledgement mismatch fails session explicitly | TASK-018, TASK-020 |
-| Repeated send loop until stopped | TASK-019 |
-| Clean shutdown | TASK-019, TASK-021 |
-| Connection lifecycle, send result, and acknowledgement logs | TASK-019 |
-| Reconnect after TCP connection loss | TASK-020 |
-| One independent runner and TCP session per IMEI | TASK-021 |
-| At least two IMEIs concurrently | TASK-021, TASK-022 |
-| Local parser verifies complete handshake and AVL exchange | TASK-016, TASK-018, TASK-022 |
-| External parser can decode at least one Codec 8 Extended packet | TASK-014, TASK-018, TASK-022 |
-| Vehicle simulation separated from Codec and TCP layers | TASK-003, TASK-004, TASK-009, TASK-011, TASK-013, TASK-018 |
-| Route layer does not encode packets or open TCP | TASK-005, TASK-006 |
-| Device-profile layer does not implement route movement or sockets | TASK-010, TASK-011 |
-| Codec layer contains no route, style, reconnect, or socket logic | TASK-013, TASK-014 |
-| TCP session does not generate telemetry | TASK-017, TASK-018, TASK-019 |
-| README and CLI documentation | TASK-023 |
-| References under `references/` are read-only | TASK-001, TASK-012, TASK-016, TASK-023 |
-| Non-goals: no UDP, TLS, web dashboard, cloud deployment, historical trip database, command-response simulation, or non-Codec 8 Extended codecs | TASK-001, TASK-014, TASK-020, TASK-023 |
+| PRD requirement                                                                                                                                | Covered by                                                 |
+| ---------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
+| TypeScript, Node.js, `net`, `Buffer`, Vitest, minimal dependencies                                                                             | TASK-001                                                   |
+| CLI and environment configuration                                                                                                              | TASK-002                                                   |
+| Parser host and parser port                                                                                                                    | TASK-002, TASK-023                                         |
+| IMEI or list of IMEIs                                                                                                                          | TASK-002, TASK-021, TASK-023                               |
+| Send interval                                                                                                                                  | TASK-002, TASK-008, TASK-019                               |
+| Reconnect delay                                                                                                                                | TASK-002, TASK-020                                         |
+| Driving style and seed configuration                                                                                                           | TASK-002, TASK-007, TASK-008, TASK-023                     |
+| Teltonika device profile configuration                                                                                                         | TASK-002, TASK-010                                         |
+| Route, driving-style, device-profile, and vehicle-state domain models                                                                          | TASK-003                                                   |
+| AVL domain models                                                                                                                              | TASK-004                                                   |
+| Longitude and latitude Teltonika signed integer encoding                                                                                       | TASK-004, TASK-011, TASK-013                               |
+| JSON route file loading                                                                                                                        | TASK-005                                                   |
+| Route validation                                                                                                                               | TASK-005                                                   |
+| Route geometry and heading                                                                                                                     | TASK-006                                                   |
+| Smooth position interpolation                                                                                                                  | TASK-006, TASK-009, TASK-022                               |
+| End-of-route loops to first point                                                                                                              | TASK-006, TASK-019, TASK-023                               |
+| `eco`, `normal`, and `aggressive` driving styles                                                                                               | TASK-007, TASK-009, TASK-023                               |
+| Same route, style, seed, and interval produces same telemetry                                                                                  | TASK-008, TASK-009, TASK-015, TASK-019, TASK-022           |
+| Different styles produce different behavior on same route                                                                                      | TASK-007, TASK-009, TASK-015                               |
+| Speed, acceleration, braking, stopping, idling behavior                                                                                        | TASK-009                                                   |
+| Ignition and movement behavior                                                                                                                 | TASK-009, TASK-011                                         |
+| Harsh acceleration and harsh braking events                                                                                                    | TASK-009, TASK-010, TASK-011                               |
+| Default Codec 8 Extended device profile                                                                                                        | TASK-010                                                   |
+| Device profile maps ignition, movement, voltage, and events                                                                                    | TASK-010, TASK-011                                         |
+| Vehicle state maps into AVL GPS and IO values                                                                                                  | TASK-011                                                   |
+| Timestamp, priority, GPS element, event IO ID, and IO elements                                                                                 | TASK-004, TASK-011, TASK-013                               |
+| CRC-16/IBM over Teltonika data field                                                                                                           | TASK-012, TASK-014                                         |
+| Independent CRC vector or known packet fixture                                                                                                 | TASK-012                                                   |
+| Codec 8 Extended AVL record encoding                                                                                                           | TASK-013                                                   |
+| TCP AVL packet preamble, length, codec ID, record counts, CRC                                                                                  | TASK-014                                                   |
+| Encoder supports one or more records per packet                                                                                                | TASK-014                                                   |
+| Runtime default sends one AVL record per packet                                                                                                | TASK-019                                                   |
+| Dry-run deterministic hex dump                                                                                                                 | TASK-015, TASK-022, TASK-023                               |
+| Reusable local parser fixture                                                                                                                  | TASK-016                                                   |
+| TCP client connection to parser                                                                                                                | TASK-017, TASK-018, TASK-019                               |
+| IMEI handshake two-byte length plus ASCII IMEI                                                                                                 | TASK-017                                                   |
+| IMEI acknowledgement `0x01` accepted and `0x00` rejected                                                                                       | TASK-017, TASK-020                                         |
+| Rejected IMEI stops without reconnecting                                                                                                       | TASK-017, TASK-020                                         |
+| AVL send after IMEI acceptance                                                                                                                 | TASK-018                                                   |
+| 4-byte accepted-record acknowledgement                                                                                                         | TASK-018                                                   |
+| Acknowledgement mismatch fails session explicitly                                                                                              | TASK-018, TASK-020                                         |
+| Repeated send loop until stopped                                                                                                               | TASK-019                                                   |
+| Clean shutdown                                                                                                                                 | TASK-019, TASK-021                                         |
+| Connection lifecycle, send result, and acknowledgement logs                                                                                    | TASK-019                                                   |
+| Reconnect after TCP connection loss                                                                                                            | TASK-020                                                   |
+| One independent runner and TCP session per IMEI                                                                                                | TASK-021                                                   |
+| At least two IMEIs concurrently                                                                                                                | TASK-021, TASK-022                                         |
+| Local parser verifies complete handshake and AVL exchange                                                                                      | TASK-016, TASK-018, TASK-022                               |
+| External parser can decode at least one Codec 8 Extended packet                                                                                | TASK-014, TASK-018, TASK-022                               |
+| Vehicle simulation separated from Codec and TCP layers                                                                                         | TASK-003, TASK-004, TASK-009, TASK-011, TASK-013, TASK-018 |
+| Route layer does not encode packets or open TCP                                                                                                | TASK-005, TASK-006                                         |
+| Device-profile layer does not implement route movement or sockets                                                                              | TASK-010, TASK-011                                         |
+| Codec layer contains no route, style, reconnect, or socket logic                                                                               | TASK-013, TASK-014                                         |
+| TCP session does not generate telemetry                                                                                                        | TASK-017, TASK-018, TASK-019                               |
+| README and CLI documentation                                                                                                                   | TASK-023                                                   |
+| References under `references/` are read-only                                                                                                   | TASK-001, TASK-012, TASK-016, TASK-023                     |
+| Non-goals: no UDP, TLS, web dashboard, cloud deployment, historical trip database, command-response simulation, or non-Codec 8 Extended codecs | TASK-001, TASK-014, TASK-020, TASK-023                     |

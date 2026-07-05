@@ -112,6 +112,7 @@ for ((iteration = 1; iteration <= MAX_ITERATIONS; iteration++)); do
   codex exec \
     --ephemeral \
     --sandbox workspace-write \
+    --config 'sandbox_workspace_write.network_access=true' \
     --output-last-message "$LAST_MESSAGE_FILE" \
     - <<EOF
 Follow AGENTS.md.
