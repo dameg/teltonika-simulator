@@ -7,7 +7,7 @@ export interface RecordedImeiFrame {
 }
 
 export interface TeltonikaParserFixtureOptions {
-  imeiResponseByte?: 0x00 | 0x01;
+  imeiResponseByte?: number;
   avlAcknowledgementCount?: number;
   host?: string;
 }
@@ -18,7 +18,7 @@ export interface TeltonikaParserFixture {
   readonly imeiFrames: readonly RecordedImeiFrame[];
   readonly avlFrames: readonly Buffer[];
   readonly clientSockets: readonly net.Socket[];
-  setImeiResponseByte(responseByte: 0x00 | 0x01): void;
+  setImeiResponseByte(responseByte: number): void;
   setAvlAcknowledgementCount(count: number): void;
   waitForConnection(count?: number): Promise<net.Socket>;
   waitForImeiFrame(count?: number): Promise<RecordedImeiFrame>;
@@ -37,6 +37,7 @@ export async function startTeltonikaParserFixture(
   const avlFrames: Buffer[] = [];
   const socketBuffers = new Map<net.Socket, Buffer>();
   let imeiResponseByte = options.imeiResponseByte ?? 0x01;
+  assertByte(imeiResponseByte, "IMEI response byte");
   let avlAcknowledgementCount = options.avlAcknowledgementCount ?? 1;
 
   const server = net.createServer((socket) => {
@@ -82,6 +83,7 @@ export async function startTeltonikaParserFixture(
     avlFrames,
     clientSockets,
     setImeiResponseByte(responseByte) {
+      assertByte(responseByte, "IMEI response byte");
       imeiResponseByte = responseByte;
     },
     setAvlAcknowledgementCount(count) {
@@ -197,5 +199,11 @@ function avlAckBuffer(count: number): Buffer {
 function assertAckCount(count: number): void {
   if (!Number.isInteger(count) || count < 0 || count > 0xffffffff) {
     throw new RangeError("AVL acknowledgement count must be an unsigned 32-bit integer");
+  }
+}
+
+function assertByte(value: number, label: string): void {
+  if (!Number.isInteger(value) || value < 0 || value > 0xff) {
+    throw new RangeError(`${label} must be an unsigned 8-bit integer`);
   }
 }

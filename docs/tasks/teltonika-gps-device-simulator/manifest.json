@@ -218,7 +218,7 @@
       "id": "TASK-017",
       "title": "Implement IMEI Handshake Session Behavior",
       "path": "TASK-017-implement-imei-handshake-session-behavior",
-      "status": "ready",
+      "status": "completed",
       "workflowVersion": 2,
       "dependsOn": [
         "TASK-002",
@@ -231,7 +231,7 @@
       "id": "TASK-018",
       "title": "Send AVL Packets And Validate Accepted-Record Acknowledgements",
       "path": "TASK-018-send-avl-packets-and-validate-accepted-record-acknowledgements",
-      "status": "blocked",
+      "status": "ready",
       "workflowVersion": 2,
       "dependsOn": [
         "TASK-014",

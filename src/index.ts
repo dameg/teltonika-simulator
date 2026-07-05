@@ -32,6 +32,7 @@ export {
 } from "./route";
 export { crc16Ibm, crc16IbmProtocolField } from "./codec-crc";
 export { encodeCodec8ExtendedPacket, encodeCodec8ExtendedRecord } from "./codec8-extended";
+export { encodeImeiHandshakeFrame, performImeiHandshake } from "./imei-handshake";
 export type {
   AvlGpsElement,
   AvlIoElement,
@@ -57,6 +58,7 @@ export type {
   VehicleState,
   VehicleStateField
 } from "./domain";
+export type { ImeiHandshakeOptions, ImeiHandshakeResult } from "./imei-handshake";
 export type {
   DeterministicSimulationContext,
   DeterministicSimulationOptions,
