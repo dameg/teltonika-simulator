@@ -1,289 +1,699 @@
-# Agent Instructions
+# AGENTS.md
 
-## Sources of Truth
+## Purpose
 
-- Product requirements:
-  `docs/teltonika-gps-device-simulator-prd.md`
+This repository uses a multi-agent Ralph workflow for planning, implementing,
+reviewing, and completing software tasks.
 
-- Implementation task plan:
-  `docs/tasks/teltonika-gps-device-simulator-tasks.md`
+Agents must respect repository architecture, existing conventions, task scope,
+and the ownership rules defined in this file.
 
-- Traccar protocol reference rules:
-  `references/traccar/README.md`
+Do not silently expand scope, rewrite completed work, or bypass verification.
 
-- External protocol reference files:
-  `references/traccar/`
+## Instruction Scope
+
+This file applies to the entire repository unless a nested `AGENTS.md` provides
+more specific instructions for a directory subtree.
+
+When multiple `AGENTS.md` files apply:
+
+1. Use the repository-root `AGENTS.md` as the global baseline.
+2. Apply nested `AGENTS.md` instructions to files within their subtree.
+3. Prefer the closest applicable `AGENTS.md` when instructions conflict.
+4. Report unresolved conflicts instead of guessing.
+
+## Source Priority
 
 When requirements conflict, use this priority:
 
-1. Current PRD.
-2. Repository-level agent instructions.
-3. Current active task.
-4. Official Teltonika documentation.
-5. Traccar implementation references.
-6. Existing implementation details.
+1. Current task specification in `task.md`.
+2. Applicable `AGENTS.md` files.
+3. Current PRD.
+4. Architecture documents.
+5. Official vendor or protocol documentation.
+6. Existing implementation and tests.
+7. External implementation references.
 
-Traccar is implementation evidence from the parser/server side. It is not the
-authoritative Teltonika protocol specification.
+External references are implementation evidence, not automatically the
+authoritative specification.
 
-## Product Model
+## Task Workspace
 
-The project represents a virtual Teltonika device installed in a virtual
-vehicle.
+Task workspaces live under:
 
-The vehicle:
+```text
+docs/tasks/<prd-name>/
+```
 
-- follows a configured route;
-- moves over time between route points;
-- uses a configured driving-style profile;
-- produces deterministic vehicle-state snapshots;
-- maps vehicle state into Teltonika GPS and IO values;
-- sends Codec 8 Extended AVL packets to an external TCP parser.
+Each workspace contains:
 
-The project is not only a packet generator. It must simulate meaningful,
-repeatable vehicle behavior.
+```text
+docs/tasks/<prd-name>/
+├── manifest.json
+├── TRACEABILITY.md
+├── TASK-NNN-kebab-case-title/
+│   ├── task.md
+│   ├── plan.md
+│   ├── progress.md
+│   └── review.md
+└── ...
+```
+
+Not every task directory contains all workflow files immediately.
+
+Expected lifecycle:
+
+```text
+task.md
+   |
+   v
+planner -> plan.md
+   |
+   v
+implementer -> code + tests + progress.md
+   |
+   v
+reviewer -> review.md
+   |
+   +--> PASS -> completed
+   |
+   +--> FAIL -> implementer fixes -> review again
+   |
+   +--> NEEDS_REPLAN -> planner updates plan.md
+```
+
+## File Ownership
+
+### `task.md`
+
+Owned by:
+
+- `prd-to-tasks` during generation or migration.
+
+Rules:
+
+- treat as immutable after task execution begins;
+- do not use as a progress log;
+- do not change acceptance criteria to make implementation easier;
+- do not alter task scope without explicit instruction;
+- do not rewrite completed legacy tasks.
+
+### `plan.md`
+
+Owned by:
+
+- planner.
+
+Rules:
+
+- planner creates or updates it;
+- implementer and reviewer may read it;
+- implementer must not rewrite it;
+- reviewer must not rewrite it;
+- replanning must preserve useful history or clearly document replaced
+  assumptions.
+
+### `progress.md`
+
+Owned by:
+
+- implementer.
+
+Rules:
+
+- implementer creates and updates it;
+- planner and reviewer may read it;
+- record completed work, changed files, verification results, blockers, and
+  addressed review findings;
+- do not use it to modify task scope;
+- do not hide failed verification.
+
+### `review.md`
+
+Owned by:
+
+- reviewer.
+
+Rules:
+
+- reviewer creates and updates it;
+- planner and implementer may read it;
+- implementer must not edit or delete reviewer findings;
+- use stable finding IDs such as `REV-001`;
+- preserve review history across attempts;
+- return exactly one result:
+  - `PASS`;
+  - `FAIL`;
+  - `NEEDS_REPLAN`.
+
+### `manifest.json`
+
+Owned at runtime by:
+
+- orchestrator.
+
+Rules:
+
+- agents must not manually change runtime state unless explicitly acting as the
+  orchestrator;
+- preserve stable task IDs;
+- preserve attempt counts and review state;
+- do not infer completion only from file presence;
+- do not mark a task completed before all completion conditions pass.
+
+### `TRACEABILITY.md`
+
+Owned by:
+
+- task generator during generation or migration.
+
+Rules:
+
+- keep PRD requirements mapped to tasks;
+- distinguish migrated coverage from newly generated coverage;
+- record important non-goals and unresolved questions;
+- do not use it as runtime state.
+
+## Workflow Versions
+
+Legacy completed tasks may use:
+
+```yaml
+workflow_version: 1
+```
+
+New or migrated unfinished tasks use:
+
+```yaml
+workflow_version: 2
+```
+
+Rules:
+
+- do not retroactively create `plan.md`, `progress.md`, or `review.md` for
+  completed workflow version 1 tasks;
+- do not reopen completed legacy tasks without explicit instruction;
+- unfinished legacy tasks may continue through workflow version 2 after
+  migration;
+- preserve original task IDs whenever possible.
+
+## Task Statuses
+
+Initial generation may use only:
+
+- `ready`;
+- `blocked`;
+- `completed` for migrated completed legacy tasks.
+
+Runtime statuses are managed by the orchestrator:
+
+- `planning`;
+- `planned`;
+- `implementing`;
+- `in_review`;
+- `needs_changes`;
+- `needs_replan`;
+- `completed`;
+- `failed`.
+
+Status rules:
+
+- `ready` means every dependency is completed;
+- `blocked` means at least one dependency is incomplete or an unresolved
+  blocker exists;
+- `completed` means all acceptance criteria, verification, and review gates
+  passed;
+- do not set runtime statuses in `task.md`;
+- do not reopen completed tasks automatically.
+
+## Planner Role
+
+The planner is responsible for understanding the task and preparing an
+implementation plan.
+
+Inputs:
+
+- `task.md`;
+- applicable `AGENTS.md` files;
+- current PRD;
+- relevant architecture documents;
+- relevant source files and tests;
+- unresolved review findings when replanning.
+
+Responsibilities:
+
+- inspect the existing implementation;
+- identify files to create or modify;
+- describe implementation steps in dependency order;
+- identify risks, edge cases, and architecture constraints;
+- define validation and error-handling strategy;
+- define tests to add or update;
+- define exact verification commands;
+- create or update `plan.md`.
+
+Restrictions:
+
+- do not modify production code;
+- do not modify tests;
+- do not modify `task.md`;
+- do not modify `progress.md`;
+- do not modify `review.md`;
+- do not mark a task completed;
+- do not invent unresolved technology decisions;
+- do not expand task scope silently.
+
+Planner result must be one of:
+
+- `READY`;
+- `BLOCKED`;
+- `NEEDS_CLARIFICATION`.
+
+## Implementer Role
+
+The implementer is responsible for implementing the approved task scope.
+
+Inputs:
+
+- `task.md`;
+- `plan.md`;
+- applicable `AGENTS.md` files;
+- unresolved findings from `review.md`;
+- relevant source files and tests.
+
+Responsibilities:
+
+- implement only the approved scope;
+- preserve repository architecture and conventions;
+- add or update tests;
+- run required verification commands;
+- create or update `progress.md`;
+- resolve blocking review findings;
+- document remaining blockers honestly.
+
+Restrictions:
+
+- do not modify `task.md`;
+- do not modify `review.md`;
+- do not expand scope silently;
+- do not hide failed checks;
+- do not mark a task completed;
+- do not include unrelated refactors;
+- do not commit before review unless explicitly instructed by the orchestrator.
+
+Implementer status should be one of:
+
+- `IMPLEMENTATION_COMPLETE`;
+- `IN_PROGRESS`;
+- `BLOCKED`;
+- `VERIFICATION_FAILED`.
+
+## Reviewer Role
+
+The reviewer is responsible for independently evaluating the implementation.
+
+Inputs:
+
+- `task.md`;
+- `plan.md`;
+- `progress.md`;
+- applicable `AGENTS.md` files;
+- current code diff;
+- test, lint, typecheck, and other verification results;
+- relevant implementation and tests.
+
+Responsibilities:
+
+- verify every acceptance criterion;
+- check implementation against task scope and plan;
+- detect bugs, regressions, missing tests, and scope expansion;
+- verify architecture boundaries;
+- verify error handling and edge cases;
+- verify that deterministic quality gates passed;
+- create or update `review.md`.
+
+Restrictions:
+
+- do not modify production code;
+- do not modify tests;
+- do not modify `task.md`;
+- do not modify `plan.md`;
+- do not modify `progress.md`;
+- do not return `PASS` while verification fails;
+- do not downgrade blocking issues into optional suggestions.
+
+Every blocking finding must include:
+
+- stable finding ID;
+- severity;
+- affected file;
+- description;
+- expected behavior;
+- status.
+
+Reviewer result must be exactly one of:
+
+- `PASS`;
+- `FAIL`;
+- `NEEDS_REPLAN`.
+
+## Orchestrator Role
+
+The orchestrator coordinates workflow state and role execution.
+
+Responsibilities:
+
+- read `manifest.json`;
+- select the next executable task;
+- verify that dependencies are completed;
+- run exactly one workflow stage at a time;
+- update runtime status;
+- run deterministic quality gates;
+- route failed review findings back to the implementer;
+- route `NEEDS_REPLAN` back to the planner;
+- increment attempt count when appropriate;
+- stop when `maxAttempts` is reached;
+- promote blocked tasks to ready when dependencies complete;
+- commit only after review returns `PASS`, when task-level commits are enabled.
+
+The orchestrator must not trust model claims without checking required
+artifacts and command results.
+
+Examples:
+
+- planner returns `READY` -> verify `plan.md` exists;
+- implementer returns `IMPLEMENTATION_COMPLETE` -> verify `progress.md` exists;
+- reviewer returns `PASS` -> verify `review.md` exists and quality gates pass.
+
+## Task Selection
+
+Work on exactly one task at a time unless the orchestrator explicitly supports
+safe parallel execution of dependency-independent tasks.
+
+Select a task only when:
+
+- its status is executable;
+- all dependencies are completed;
+- its attempt count is below `maxAttempts`;
+- no unresolved repository-level blocker prevents execution.
+
+Do not skip earlier ready tasks without a documented reason.
+
+## Completion Rules
+
+A task is complete only when:
+
+- all acceptance criteria pass;
+- all required verification commands pass;
+- reviewer returns `PASS`;
+- no blocking review findings remain;
+- required workflow artifacts exist;
+- manifest state is consistent with the filesystem.
+
+Do not mark a task completed based only on:
+
+- an agent statement;
+- the presence of implementation files;
+- partial test success;
+- a clean-looking diff;
+- completed coding without independent review.
+
+## Verification
+
+Verification must be deterministic and executed by the implementer and/or
+orchestrator as required by the task.
+
+Always use repository-defined commands from:
+
+- `package.json`;
+- workspace configuration;
+- Makefiles;
+- CI configuration;
+- applicable `AGENTS.md`;
+- `task.md`;
+- `plan.md`.
+
+Typical checks may include:
+
+```bash
+pnpm lint
+pnpm typecheck
+pnpm test
+pnpm test:integration
+```
+
+Do not invent commands that do not match the repository stack.
+
+Do not claim a check passed unless it was executed successfully.
+
+When verification fails:
+
+- record the command;
+- record the failure;
+- do not mark the task complete;
+- keep or return the task to implementation.
+
+## Scope Discipline
+
+Never silently expand task scope.
+
+Do not include:
+
+- unrelated refactors;
+- speculative architecture changes;
+- cleanup unrelated to acceptance criteria;
+- dependency upgrades not required by the task;
+- formatting changes across unrelated files;
+- undocumented behavior changes.
+
+When adjacent work is discovered:
+
+- record it as a follow-up;
+- create a separate task only when instructed;
+- do not absorb it into the current task automatically.
 
 ## Architecture Boundaries
 
-- Route loading and route geometry belong to the route layer.
-- Driving-style behavior belongs to the simulation layer.
-- Vehicle simulation produces deterministic vehicle-state snapshots.
-- Teltonika IO mappings belong to the device-profile layer.
-- AVL domain models must remain independent from binary serialization.
-- Codec encoding must not contain route or driving-style logic.
-- TCP session code must not generate telemetry.
-- One independent device runner is used per IMEI.
-
-### Route layer
-
-Responsible for:
-
-- loading route definitions;
-- validating route files;
-- exposing route points, speed limits, and route metadata;
-- calculating route geometry where needed.
-
-The route layer must not encode Teltonika packets or open TCP connections.
-
-### Vehicle simulation layer
-
-Responsible for:
-
-- advancing simulation time;
-- interpolating position between route points;
-- applying acceleration and braking;
-- applying driving-style behavior;
-- generating speed, heading, altitude, ignition, movement, and driving events;
-- producing deterministic vehicle-state snapshots.
-
-The simulation layer must not know Codec 8 Extended byte layout or TCP session
-details.
-
-### Driving-style layer
-
-Responsible for defining behavior such as:
-
-- target acceleration;
-- braking intensity;
-- speed variation;
-- idling behavior;
-- cornering behavior;
-- harsh acceleration probability;
-- harsh braking probability.
-
-Required MVP driving styles:
-
-- `eco`
-- `normal`
-- `aggressive`
-
-The same route, driving style, seed, and interval must produce the same vehicle
-state sequence.
-
-### Device-profile layer
-
-Responsible for:
-
-- mapping vehicle state into Teltonika IO element IDs;
-- defining device-specific defaults;
-- mapping ignition, movement, voltage, and driving events;
-- producing AVL-ready values from generic vehicle state.
-
-The device profile must not implement route movement or socket communication.
-
-### AVL domain layer
-
-Responsible for:
-
-- typed AVL records;
-- GPS elements;
-- IO elements;
-- timestamps;
-- priority;
-- event IO ID.
-
-The AVL domain model must remain independent from binary serialization.
-
-### Codec layer
-
-Responsible for:
-
-- CRC calculation;
-- Codec 8 Extended record encoding;
-- packet framing;
-- length fields;
-- record counts;
-- binary byte order.
-
-The Codec encoder must not contain route, driving-style, reconnect, or socket
-logic.
-
-### TCP session layer
-
-Responsible for:
-
-- opening an outbound TCP connection;
-- sending the IMEI handshake;
-- reading IMEI acceptance or rejection;
-- sending AVL packets;
-- reading accepted-record acknowledgements;
-- detecting disconnects;
-- reconnecting after connection loss.
-
-The TCP session must not generate telemetry.
-
-### Runtime layer
-
-Responsible for:
-
-- creating one device runner per IMEI;
-- connecting simulation output to AVL mapping and TCP transport;
-- handling clean shutdown;
-- coordinating concurrent devices.
-
-## Implementation Stack
-
-Use:
-
-- TypeScript;
-- Node.js;
-- Node.js built-in `net` module for TCP communication;
-- Node.js `Buffer` APIs for binary encoding;
-- Vitest for unit and integration tests.
-
-Prefer minimal production dependencies.
-
-Do not introduce:
-
-- NestJS;
-- Express;
-- Fastify;
-- a web framework;
-- a database;
-- a message broker;
-
-unless the PRD is explicitly updated to require one.
-
-## Task Execution
-
-1. Read this file.
-2. Read the complete PRD.
-3. Read the task plan.
-4. Select the first task with status `ready`.
-5. Verify that every task dependency has status `done`.
-6. Read every file listed under the task's `Relevant Files`.
-7. Implement exactly one task.
-8. If the task conflicts with the PRD or this file, stop and record the conflict instead of implementing it.
-9. Do not silently expand the task scope.
-10. Run every verification command listed in the task.
-11. Mark the task `done` only when all acceptance criteria pass.
-12. Change blocked tasks to `ready` only when every dependency is `done`.
-13. Commit the completed task separately.
-14. Stop after completing one task.
-
-Do not include unrelated formatting or refactors in a task commit.
-Do not modify generated or reference files unless the active task explicitly requires it.
-
-## Task Status Rules
-
-Allowed execution statuses:
-
-- `blocked`
-- `ready`
-- `in_progress`
-- `done`
-- `failed`
-
-Before implementation:
-
-- change the active task from `ready` to `in_progress`.
-
-After successful verification:
-
-- change it to `done`;
-- unblock newly available tasks.
-
-After failed verification that cannot be fixed within the task scope:
-
-- change it to `failed`;
-- record the reason;
-- do not mark dependent tasks as ready.
-
-## Behavioral Decisions
-
-Use these MVP decisions unless the PRD is updated:
-
-- Route format: JSON.
-- End-of-route behavior: loop to the first route point.
-- IMEI rejection with `0x00`: stop that device session without reconnecting.
-- AVL acknowledgement count mismatch: fail that device session explicitly.
-- TCP connection loss: reconnect after the configured fixed delay.
-- One independent device runner and TCP session per IMEI.
-- Default runtime behavior: one AVL record per packet.
-- Encoder capability: one or more AVL records per packet.
-- Generated telemetry and route playback must be deterministic.
-- Files under `references/` are read-only.
-
-## Testing Rules
-
-Tests should focus on observable behavior.
-
-Prefer:
-
-- deterministic unit tests for simulation;
-- known coordinate conversion tests;
-- CRC test vectors;
-- binary packet structure tests;
-- local TCP parser integration tests;
-- parser-visible assertions;
-- fixed seeds and fixed routes.
-
-Do not:
-
-- weaken tests to make them pass;
-- remove failing protocol assertions without justification;
-- rely on sleep-heavy timing tests when deterministic clocks or explicit stop
-  controls can be used;
-- copy Traccar behavior blindly without independent validation.
-
-## External References
-
-Files under `references/traccar/` are read-only.
-
-Use them to understand:
-
-- IMEI framing;
-- AVL packet framing;
-- Codec 8 Extended decoding order;
-- acknowledgement behavior;
-- protocol test payloads.
-
-Do not use them as a source for:
-
-- route simulation;
+Keep responsibilities separate where applicable:
+
+- configuration;
+- domain models;
+- route loading;
+- route validation;
+- route geometry;
+- route interpolation;
+- simulation state;
 - driving-style behavior;
-- vehicle physics;
-- project architecture;
-- runtime orchestration.
+- device-profile mapping;
+- protocol models;
+- checksum logic;
+- binary encoding;
+- packet framing;
+- transport sessions;
+- reconnect behavior;
+- runtime orchestration;
+- observability;
+- integration testing;
+- documentation.
 
-Do not modify files under `references/`.
+Do not combine simulation, encoding, networking, and orchestration into one
+broad implementation unit.
+
+For simulation systems, prefer:
+
+```text
+route + driving style + seed
+            |
+            v
+vehicle simulation engine
+            |
+            v
+device profile mapping
+            |
+            v
+protocol domain record
+            |
+            v
+binary encoder
+            |
+            v
+transport session
+```
+
+## Protocol Work
+
+Separate protocol responsibilities when practical:
+
+- protocol domain models;
+- checksum or CRC;
+- record encoding;
+- packet framing;
+- handshake framing;
+- acknowledgement parsing;
+- session lifecycle.
+
+Checksum implementations must define:
+
+- algorithm variant;
+- polynomial;
+- initial value;
+- input reflection;
+- output reflection;
+- final XOR;
+- byte range;
+- byte order;
+- protocol field representation.
+
+Do not validate a copied checksum implementation only against itself.
+
+Use at least one independent known test vector or valid packet fixture.
+
+## Simulation Work
+
+Simulation logic must remain independent from networking.
+
+Simulation tasks should explicitly consider:
+
+- deterministic seed behavior;
+- simulation clock or interval;
+- route geometry;
+- interpolation;
+- heading;
+- speed;
+- acceleration;
+- braking;
+- stopping;
+- idling;
+- ignition;
+- movement state;
+- driving events;
+- end-of-route behavior;
+- mapping into protocol values.
+
+Tests should verify:
+
+- identical inputs produce identical outputs;
+- different profiles produce observably different behavior;
+- positions progress smoothly;
+- known coordinates produce expected encoded values;
+- end-of-route behavior is deterministic.
+
+## Integration Testing
+
+Create reusable parser, server, or protocol fixtures before multiple networking
+tasks depend on them.
+
+Do not postpone all external behavior testing until the final task.
+
+Each networking task should add focused parser-visible tests.
+
+Final end-to-end tests should compose existing fixtures instead of rebuilding
+all test infrastructure.
+
+## Existing Workspace Protection
+
+When a task workspace already exists:
+
+- preserve task directories containing `plan.md`, `progress.md`, or `review.md`;
+- do not overwrite `task.md` for started tasks;
+- preserve runtime state in `manifest.json`;
+- do not renumber existing task IDs;
+- do not delete tasks silently;
+- preserve manually added files;
+- append new tasks using the next available task ID;
+- report conflicts instead of silently rewriting active work.
+
+A task is considered started when:
+
+- its manifest status is not `ready`, `blocked`, or `completed`;
+- or its directory contains `plan.md`;
+- or its directory contains `progress.md`;
+- or its directory contains `review.md`.
+
+## Git and Commits
+
+Do not include unrelated changes in a task commit.
+
+When task-level commits are enabled:
+
+- implementation remains uncommitted during review;
+- reviewer inspects the current task diff;
+- orchestrator commits only after `PASS`;
+- commit message should include the task ID;
+- one completed task should normally produce one focused commit.
+
+Example:
+
+```text
+TASK-014: add device registration
+```
+
+Do not rewrite unrelated history.
+
+Do not force push unless explicitly instructed.
+
+## Legacy Task Migration
+
+When migrating legacy tasks:
+
+- preserve existing task IDs whenever possible;
+- preserve completion state;
+- map `done`, `completed`, checked items, or explicitly finished work to
+  `completed`;
+- map unfinished dependency-free tasks to `ready`;
+- map unfinished tasks with incomplete dependencies to `blocked`;
+- do not retroactively create workflow artifacts for completed tasks;
+- do not reopen completed tasks;
+- use workflow version 1 for completed legacy tasks;
+- use workflow version 2 for unfinished tasks continuing under the new
+  workflow;
+- report ambiguous statuses or dependencies instead of guessing.
+
+Do not generate duplicate tasks for work already completed.
+
+## Open Questions and Blockers
+
+Do not write `Open Questions: None` unless all meaningful decisions are
+resolved.
+
+Report unresolved questions when they affect:
+
+- technology choices;
+- architecture boundaries;
+- protocol behavior;
+- retry semantics;
+- acknowledgement handling;
+- route completion behavior;
+- device-profile mappings;
+- configuration precedence;
+- verification strategy.
+
+When a blocker prevents safe implementation:
+
+- document it;
+- return the appropriate blocked or clarification status;
+- do not invent a decision.
+
+## Restricted Files
+
+Do not modify files under:
+
+```text
+references/
+```
+
+unless explicitly instructed.
+
+Do not modify generated external fixtures, vendor snapshots, or protocol
+reference files unless the task explicitly requires it.
+
+## General Quality Rules
+
+- Prefer small, reviewable changes.
+- Reuse existing patterns where appropriate.
+- Preserve public behavior unless the task requires a change.
+- Keep domain logic independent from transport and infrastructure.
+- Add tests for observable behavior.
+- Avoid tests coupled only to private helper implementation.
+- Keep errors explicit and actionable.
+- Preserve backward compatibility unless explicitly out of scope.
+- Be honest about failed checks, incomplete work, and uncertainty.

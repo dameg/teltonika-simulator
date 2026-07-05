@@ -1,12 +1,12 @@
 ---
 name: prd-to-tasks
-description: Convert a software PRD into an ordered, dependency-aware implementation task file suitable for autonomous coding loops such as Ralph.
+description: Convert a software PRD into an ordered, dependency-aware task workspace with one directory per task, suitable for multi-agent autonomous coding loops such as Ralph.
 ---
 
 # PRD to Tasks
 
-Convert the supplied PRD into a deterministic, dependency-aware implementation
-task plan suitable for autonomous coding iterations.
+Convert the supplied PRD into a deterministic, dependency-aware task workspace
+suitable for multi-agent autonomous coding iterations.
 
 Do not implement production code.
 
@@ -23,12 +23,39 @@ Optional:
 - External reference files.
 - Architecture documents.
 - Existing implementation.
-- Existing task plan.
+- Existing task workspace.
 - Preferred task output path.
 
 Default output:
 
-`docs/tasks/<prd-name>-tasks.md`
+`docs/tasks/<prd-name>/`
+
+The generated workspace must contain:
+
+```text
+docs/tasks/<prd-name>/
+├── manifest.json
+├── TRACEABILITY.md
+├── TASK-001-kebab-case-title/
+│   └── task.md
+└── TASK-002-kebab-case-title/
+    └── task.md
+```
+
+The generator must not create:
+
+- `plan.md`
+- `progress.md`
+- `review.md`
+
+These files belong to later workflow stages:
+
+- planner creates `plan.md`;
+- implementer creates and updates `progress.md`;
+- reviewer creates and updates `review.md`.
+
+The existence of these files represents actual workflow progress. Do not create
+empty placeholders.
 
 ## Source Priority
 
@@ -44,6 +71,26 @@ When requirements conflict, use this priority:
 External implementation references are implementation evidence, not necessarily
 the authoritative specification.
 
+## File Ownership
+
+The generator owns during initial generation:
+
+- `manifest.json`;
+- `TRACEABILITY.md`;
+- every `task.md`.
+
+After generation:
+
+- the orchestrator owns runtime fields in `manifest.json`;
+- the planner owns `plan.md`;
+- the implementer owns `progress.md`;
+- the reviewer owns `review.md`.
+
+Treat `task.md` as immutable after execution of that task begins.
+
+The generator must not modify runtime artifacts created by later workflow
+stages.
+
 ## Process
 
 ### 1. Read Project Context
@@ -55,7 +102,7 @@ Read:
 3. Files listed in the PRD's `Relevant Files` section.
 4. Existing architecture documents.
 5. Existing source code and tests when present.
-6. The existing task plan when revising one.
+6. The existing task workspace when revising one.
 
 Do not begin implementation.
 
@@ -129,29 +176,31 @@ Do not combine:
 
 - route logic with packet serialization;
 - driving-style logic with TCP sessions;
-- vehicle simulation with Codec encoding;
+- vehicle simulation with codec encoding;
 - device-specific IO mapping with route movement;
 - networking with telemetry generation;
 - reconnect logic with binary serialization.
 
 For a virtual-device simulator, prefer this flow:
 
-    route + driving style + seed
-                |
-                v
-    vehicle simulation engine
-                |
-                v
-    device profile mapping
-                |
-                v
-    protocol domain record
-                |
-                v
-    binary encoder
-                |
-                v
-    transport session
+```text
+route + driving style + seed
+            |
+            v
+vehicle simulation engine
+            |
+            v
+device profile mapping
+            |
+            v
+protocol domain record
+            |
+            v
+binary encoder
+            |
+            v
+transport session
+```
 
 ### 5. Build the Dependency Graph
 
@@ -212,47 +261,95 @@ Responsibilities that should normally be separate include:
 - single-device runtime and multi-device orchestration;
 - local parser fixture and final end-to-end tests.
 
-### 7. Write Each Task
+### 7. Create the Task Workspace
 
-Use this exact structure:
+Create one directory per task.
 
-## TASK-NNN: Imperative Title
+Directory naming format:
 
-**Status:** blocked | ready
+`TASK-NNN-kebab-case-title`
 
-**Depends on:** task IDs or `none`
+Examples:
 
-**Goal**
+- `TASK-001-bootstrap-project`
+- `TASK-002-validate-configuration`
+- `TASK-003-load-route-file`
+
+Each task directory initially contains exactly one generated file:
+
+`task.md`
+
+Do not initially create:
+
+- `plan.md`
+- `progress.md`
+- `review.md`
+
+### 8. Write Each Task
+
+Use this exact structure for every `task.md`:
+
+```markdown
+---
+id: TASK-NNN
+title: Imperative Title
+initial_status: ready | blocked
+depends_on:
+  - TASK-NNN
+source_prd: path/to/prd.md
+workflow_version: 2
+---
+
+# TASK-NNN: Imperative Title
+
+## Goal
 
 One concise, observable outcome.
 
-**Scope**
+## Scope
 
 - Exact work included in the task.
 - Modules, files, or behavior expected to be created or changed.
 
-**Relevant Files**
+## Relevant Files
+
+### Read
 
 - Files that must be read.
-- Files expected to be created or modified.
 - External references only when directly relevant.
 
-**Acceptance Criteria**
+### Expected to Create or Modify
+
+- Files expected to be created or modified.
+
+## Acceptance Criteria
 
 - Observable and testable conditions.
 - Avoid criteria based only on private helper calls.
 
-**Verification**
+## Verification
 
 List exact commands in a shell code block.
 
-**Out of Scope**
+## Out of Scope
 
 - Closely related work explicitly excluded from the task.
+```
 
-### 8. Assign Initial Statuses
+When there are no dependencies, use:
 
-Use only:
+```yaml
+depends_on: []
+```
+
+Use imperative task titles.
+
+Keep `task.md` focused on the implementation contract. Do not use it as a
+runtime progress log.
+
+### 9. Assign Initial Statuses
+
+The generator may assign only:
 
 - `ready`
 - `blocked`
@@ -261,30 +358,152 @@ Mark dependency-free tasks as `ready`.
 
 Mark tasks with unfinished dependencies as `blocked`.
 
-Do not initially use:
+Runtime statuses are managed exclusively by the orchestrator after generation.
 
-- `in_progress`
-- `done`
+Possible runtime statuses include:
+
+- `planning`
+- `planned`
+- `implementing`
+- `in_review`
+- `needs_changes`
+- `needs_replan`
+- `completed`
 - `failed`
 
-### 9. Add Execution Rules
+Do not write runtime status changes into `task.md`.
 
-At the top of the generated task file include:
+### 10. Create the Manifest
 
-- Work on exactly one task at a time.
-- Select the first task with status `ready`.
-- Verify that all dependencies are `done`.
-- Read all relevant files before implementation.
-- Do not silently expand scope.
-- Run every verification command.
-- Mark a task `done` only after all acceptance criteria pass.
-- Unblock a task only when every dependency is `done`.
-- Commit each completed task separately.
-- Do not include unrelated refactors in a task commit.
-- Stop when no ready tasks remain.
-- Never modify files under `references/`.
+Create:
 
-### 10. Handle Simulation Requirements
+`docs/tasks/<prd-name>/manifest.json`
+
+Use this structure:
+
+```json
+{
+  "version": 2,
+  "workflow": "planner-implementer-reviewer",
+  "sourcePrd": "path/to/prd.md",
+  "tasks": [
+    {
+      "id": "TASK-001",
+      "title": "Bootstrap the project",
+      "path": "TASK-001-bootstrap-project",
+      "status": "ready",
+      "dependsOn": [],
+      "attempt": 0,
+      "maxAttempts": 5
+    }
+  ]
+}
+```
+
+Requirements:
+
+- Store runtime status in the manifest.
+- Store task directory paths relative to the workspace.
+- Preserve stable task IDs.
+- Use the manifest as the machine-readable task index.
+- Do not duplicate full task specifications in the manifest.
+- Do not infer task completion only from the presence of markdown files.
+
+The generator sets only initial status values.
+
+The orchestrator later owns:
+
+- `status`;
+- `attempt`;
+- review-loop state;
+- retry state;
+- promotion from `blocked` to `ready`.
+
+### 11. Define Workflow Expectations
+
+The generated workspace is intended for this pipeline:
+
+```text
+task.md
+   |
+   v
+planner -> plan.md
+   |
+   v
+implementer -> code + tests + progress.md
+   |
+   v
+reviewer -> review.md
+   |
+   +--> PASS -> completed
+   |
+   +--> FAIL -> implementer fixes -> reviewer retries
+   |
+   +--> NEEDS_REPLAN -> planner updates plan.md
+```
+
+Role boundaries:
+
+#### Planner
+
+- Reads `task.md`, repository context, and relevant files.
+- Creates or updates `plan.md`.
+- Does not modify production code.
+- Does not modify `review.md`.
+- Does not mark the task completed.
+
+#### Implementer
+
+- Reads `task.md`, `plan.md`, unresolved review findings, and relevant files.
+- Modifies production code and tests.
+- Creates or updates `progress.md`.
+- Does not modify `task.md`.
+- Does not modify `review.md`.
+
+#### Reviewer
+
+- Reads `task.md`, `plan.md`, `progress.md`, the code diff, and test results.
+- Creates or updates `review.md`.
+- Does not modify production code.
+- Does not modify `task.md`.
+- Returns one of:
+  - `PASS`;
+  - `FAIL`;
+  - `NEEDS_REPLAN`.
+
+#### Orchestrator
+
+- Selects the next executable task.
+- Updates runtime state in `manifest.json`.
+- Runs deterministic quality gates.
+- Routes failed review findings back to the implementer.
+- Routes `NEEDS_REPLAN` back to the planner.
+- Marks a task completed only after all completion conditions pass.
+
+### 12. Completion Rules
+
+A task is complete only when:
+
+- all acceptance criteria pass;
+- all verification commands pass;
+- reviewer returns `PASS`;
+- no blocking review findings remain.
+
+Work on exactly one task at a time unless the orchestrator explicitly supports
+safe parallel execution of dependency-independent tasks.
+
+Never silently expand task scope.
+
+Commit each completed task separately when the repository workflow requires
+task-level commits.
+
+Do not include unrelated refactors in a task commit.
+
+Stop when no task is eligible for execution.
+
+Never modify files under `references/`.
+
+### 13. Handle Simulation Requirements
 
 When the PRD models a vehicle, tracker, device, or other evolving system,
 ensure the task plan explicitly covers:
@@ -316,7 +535,7 @@ Simulation tests should verify:
 - end-of-route behavior is deterministic;
 - simulation logic is independent from networking.
 
-### 11. Handle Device Profiles
+### 14. Handle Device Profiles
 
 When the project supports device-specific field or IO mappings, create separate
 tasks for:
@@ -328,7 +547,7 @@ tasks for:
 
 Do not place device-specific mapping inside the route engine or TCP session.
 
-### 12. Handle Protocol Requirements
+### 15. Handle Protocol Requirements
 
 Separate protocol work into independently testable layers when practical:
 
@@ -356,7 +575,7 @@ Do not validate a copied checksum implementation only against itself.
 
 Require at least one independent known test vector or valid packet fixture.
 
-### 13. Handle Integration Testing Early
+### 16. Handle Integration Testing Early
 
 Create reusable parser, server, or protocol fixtures before multiple networking
 tasks depend on them.
@@ -368,7 +587,7 @@ Each networking task should add focused parser-visible tests for its behavior.
 The final end-to-end task should compose existing fixtures and verify the
 complete flow without rewriting all previous test infrastructure.
 
-### 14. Handle Open Questions
+### 17. Handle Open Questions
 
 Do not write `Open Questions: None` unless all meaningful decisions have been
 resolved.
@@ -391,7 +610,13 @@ Do not reopen decisions already resolved in the PRD or `AGENTS.md`.
 Do not create research-only tasks unless an unresolved decision genuinely
 blocks implementation.
 
-### 15. Validate Coverage
+When unresolved questions affect the whole workspace, include them in
+`TRACEABILITY.md` under an `Open Questions` section.
+
+When a question affects only one task, include it in that task's `task.md`
+under an `Open Questions` section after `Out of Scope`.
+
+### 18. Validate Coverage
 
 Before finishing, verify:
 
@@ -407,14 +632,44 @@ Before finishing, verify:
 - Relevant external references are linked only to tasks that need them.
 - Verification commands match the selected technology stack.
 - Simulation, encoding, and networking remain separate.
+- Every manifest entry points to an existing task directory.
+- Every task directory contains `task.md`.
+- No empty workflow artifact files were generated.
+- Task IDs are unique and stable.
 
-### 16. Add a Traceability Matrix
+### 19. Create the Traceability Matrix
 
-Include a final traceability matrix:
+Create:
+
+`docs/tasks/<prd-name>/TRACEABILITY.md`
+
+Use this structure:
+
+```markdown
+# Traceability Matrix
+
+## Requirements
 
 | PRD requirement | Covered by |
 | --------------- | ---------- |
 | Requirement     | TASK-NNN   |
+
+## Architecture Boundaries
+
+| Boundary | Covered by |
+| -------- | ---------- |
+| Boundary | TASK-NNN   |
+
+## Important Non-Goals
+
+| Non-goal | Protected by |
+| -------- | ------------ |
+| Non-goal | TASK-NNN     |
+
+## Open Questions
+
+- Question, or `None` only when every meaningful decision is resolved.
+```
 
 Include:
 
@@ -424,6 +679,32 @@ Include:
 - major functional requirements;
 - architecture boundaries;
 - important non-goals.
+
+## Existing Workspace
+
+When the output directory already exists:
+
+- preserve every task directory containing `plan.md`, `progress.md`, or
+  `review.md`;
+- do not renumber existing task IDs;
+- do not overwrite `task.md` for tasks whose execution has started;
+- preserve runtime status, attempt count, and review state in `manifest.json`;
+- append new tasks using the next available task ID;
+- do not silently delete tasks for removed requirements;
+- report removed or materially changed requirements;
+- update dependencies only when doing so does not invalidate started or
+  completed work;
+- preserve manually added files in task directories.
+
+A task is considered started when any of these conditions is true:
+
+- its manifest status is not `ready` or `blocked`;
+- its directory contains `plan.md`;
+- its directory contains `progress.md`;
+- its directory contains `review.md`.
+
+When a started task conflicts materially with a revised PRD, report the
+conflict instead of silently rewriting the task.
 
 ## Restrictions
 
@@ -436,3 +717,6 @@ Include:
 - Do not create tasks that only say to investigate something unless a genuine
   unresolved decision blocks implementation.
 - Surface unresolved decisions under `Open Questions`.
+- Do not create empty workflow artifacts.
+- Do not overwrite planner, implementer, reviewer, or orchestrator state.
+- Do not treat `task.md` as a mutable progress tracker.
