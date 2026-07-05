@@ -2,6 +2,9 @@ import { parseConfig } from "./config";
 
 export { helpText, parseConfig } from "./config";
 export {
+  mapVehicleStateToAvlRecord
+} from "./avl-mapping";
+export {
   defaultCodec8ExtendedDeviceProfile,
   deviceProfiles,
   getDeviceProfile,

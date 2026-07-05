@@ -518,7 +518,7 @@ npm test
 
 ## TASK-011: Map Vehicle State To AVL GPS And IO Records
 
-**Status:** ready
+**Status:** done
 
 **Depends on:** TASK-004, TASK-009, TASK-010
 
