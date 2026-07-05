@@ -1,6 +1,8 @@
 import { parseConfig } from "./config";
+import { createDryRunOutput } from "./dry-run";
 
 export { helpText, parseConfig } from "./config";
+export { createDryRunOutput, dryRunStartTimestampMs } from "./dry-run";
 export {
   mapVehicleStateToAvlRecord
 } from "./avl-mapping";
@@ -69,15 +71,35 @@ export function simulatorName(): string {
   return "teltonika-simulator";
 }
 
+export interface CliIo {
+  stdout: Pick<NodeJS.WriteStream, "write">;
+  stderr: Pick<NodeJS.WriteStream, "write">;
+}
+
+export function runCli(argv = process.argv.slice(2), env = process.env, io: CliIo = process): number {
+  const result = parseConfig(argv, env);
+  if (result.kind === "help") {
+    io.stdout.write(`${result.help}\n`);
+    return 0;
+  }
+
+  if (!result.config.dryRun) {
+    throw new Error("Live TCP runtime is not implemented yet. Use --dry-run.");
+  }
+
+  const output = createDryRunOutput(result.config);
+  if (output.stderrLines.length > 0) {
+    io.stderr.write(`${output.stderrLines.join("\n")}\n`);
+  }
+  if (output.stdoutLines.length > 0) {
+    io.stdout.write(`${output.stdoutLines.join("\n")}\n`);
+  }
+  return 0;
+}
+
 if (require.main === module) {
   try {
-    const result = parseConfig();
-    if (result.kind === "help") {
-      console.log(result.help);
-      process.exit(0);
-    }
-
-    console.log(JSON.stringify(result.config, null, 2));
+    process.exit(runCli());
   } catch (error) {
     console.error(error instanceof Error ? error.message : String(error));
     process.exit(1);

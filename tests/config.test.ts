@@ -92,4 +92,16 @@ describe("configuration parsing", () => {
     }
     expect(result.help).toContain("Usage:");
   });
+
+  it("parses --count as packetCount", () => {
+    const result = parseConfig([...requiredArgs, "--dry-run", "--count", "2"], {});
+
+    if (result.kind !== "config") {
+      throw new Error("expected config");
+    }
+    expect(result.config).toMatchObject({
+      dryRun: true,
+      packetCount: 2
+    });
+  });
 });

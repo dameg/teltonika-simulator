@@ -191,7 +191,7 @@
       "id": "TASK-015",
       "title": "Add Dry-Run Deterministic Hex Dump Mode",
       "path": "TASK-015-add-dry-run-deterministic-hex-dump-mode",
-      "status": "ready",
+      "status": "completed",
       "workflowVersion": 2,
       "dependsOn": [
         "TASK-002",
