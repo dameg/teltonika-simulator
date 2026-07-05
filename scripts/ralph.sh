@@ -3,7 +3,7 @@
 set -Eeuo pipefail
 
 TASK_FILE="${TASK_FILE:-docs/tasks/teltonika-gps-device-simulator-tasks.md}"
-MAX_ITERATIONS="${MAX_ITERATIONS:-30}"
+MAX_ITERATIONS=1
 RALPH_DIR="${RALPH_DIR:-.ralph}"
 LAST_MESSAGE_FILE="${RALPH_DIR}/last-message.md"
 
