@@ -125,6 +125,95 @@ describe("live session runtime", () => {
     expect(fixture.avlFrames).toHaveLength(0);
   });
 
+  it("reconnects with a fresh IMEI handshake and preserves packet sequence after a socket close", async () => {
+    const baseline = await collectPacketHexSequence(4);
+    const fixture = await useFixture();
+    const controller = new AbortController();
+    const reconnectDelayMs = 40;
+
+    const sessionPromise = runLiveSession({
+      host: fixture.host,
+      port: fixture.port,
+      imei: "123456789012345",
+      intervalMs: 5,
+      reconnectDelayMs,
+      routeFile,
+      drivingStyle: "normal",
+      seed: 7,
+      deviceProfile: "default-codec8e",
+      signal: controller.signal
+    });
+
+    await fixture.waitForAvlFrame(1);
+    const disconnectAt = Date.now();
+    await fixture.closeClientSocket();
+    await delay(reconnectDelayMs / 2);
+    expect(fixture.imeiFrames).toHaveLength(1);
+    await fixture.waitForImeiFrame(2);
+    await fixture.waitForAvlFrame(3);
+
+    controller.abort();
+    await expect(sessionPromise).resolves.toEqual({ kind: "completed" });
+
+    expect(Date.now() - disconnectAt).toBeGreaterThanOrEqual(reconnectDelayMs);
+    expect(fixture.imeiFrames).toHaveLength(2);
+    expect(fixture.avlFrames.map((frame) => frame.toString("hex"))).toEqual([
+      baseline[0] ?? "",
+      baseline[1] ?? "",
+      baseline[2] ?? ""
+    ]);
+    const timestamps = fixture.avlFrames.slice(0, 3).map(packetTimestampMs);
+    expect(timestamps).toEqual([...timestamps].sort((left, right) => left - right));
+  });
+
+  it("does not reconnect after IMEI rejection", async () => {
+    const fixture = await useFixture({ imeiResponseByte: 0x00 });
+
+    await expect(
+      runLiveSession({
+        host: fixture.host,
+        port: fixture.port,
+        imei: "123456789012345",
+        intervalMs: 5,
+        reconnectDelayMs: 5,
+        routeFile,
+        drivingStyle: "normal",
+        seed: 7,
+        deviceProfile: "default-codec8e"
+      })
+    ).resolves.toEqual({ kind: "rejected" });
+
+    await delay(20);
+
+    expect(fixture.clientSockets).toHaveLength(0);
+    expect(fixture.imeiFrames).toHaveLength(1);
+    expect(fixture.avlFrames).toHaveLength(0);
+  });
+
+  it("does not silently retry after an AVL acknowledgement mismatch", async () => {
+    const fixture = await useFixture({ avlAcknowledgementCount: 0 });
+
+    await expect(
+      runLiveSession({
+        host: fixture.host,
+        port: fixture.port,
+        imei: "123456789012345",
+        intervalMs: 5,
+        reconnectDelayMs: 5,
+        routeFile,
+        drivingStyle: "normal",
+        seed: 7,
+        deviceProfile: "default-codec8e"
+      })
+    ).rejects.toThrow("AVL acknowledgement count mismatch: expected 1 record(s), received 0.");
+
+    await delay(20);
+
+    expect(fixture.imeiFrames).toHaveLength(1);
+    expect(fixture.avlFrames).toHaveLength(1);
+    expect(fixture.clientSockets).toHaveLength(0);
+  });
+
   async function useFixture(
     options?: Parameters<typeof startTeltonikaParserFixture>[0]
   ): Promise<TeltonikaParserFixture> {
@@ -134,7 +223,7 @@ describe("live session runtime", () => {
   }
 });
 
-async function collectPacketHexSequence(): Promise<string[]> {
+async function collectPacketHexSequence(count = 3): Promise<string[]> {
   const fixture = await startTeltonikaParserFixture();
   const controller = new AbortController();
 
@@ -151,11 +240,11 @@ async function collectPacketHexSequence(): Promise<string[]> {
       signal: controller.signal
     });
 
-    await fixture.waitForAvlFrame(3);
+    await fixture.waitForAvlFrame(count);
     controller.abort();
     await sessionPromise;
 
-    return fixture.avlFrames.map((frame) => frame.toString("hex"));
+    return fixture.avlFrames.slice(0, count).map((frame) => frame.toString("hex"));
   } finally {
     await fixture.close();
   }

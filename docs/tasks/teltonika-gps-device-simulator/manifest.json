@@ -258,19 +258,19 @@
       "id": "TASK-020",
       "title": "Add Reconnectable Single-Device Runner",
       "path": "TASK-020-add-reconnectable-single-device-runner",
-      "status": "ready",
+      "status": "completed",
       "workflowVersion": 2,
       "dependsOn": [
         "TASK-019"
       ],
-      "attempt": 0,
+      "attempt": 2,
       "maxAttempts": 5
     },
     {
       "id": "TASK-021",
       "title": "Add Multi-Device Runtime",
       "path": "TASK-021-add-multi-device-runtime",
-      "status": "blocked",
+      "status": "ready",
       "workflowVersion": 2,
       "dependsOn": [
         "TASK-020"

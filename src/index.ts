@@ -114,6 +114,7 @@ export async function runCli(argv = process.argv.slice(2), env = process.env, io
       port: result.config.port,
       imei: result.config.imeis[0] ?? "",
       intervalMs: result.config.intervalMs,
+      reconnectDelayMs: result.config.reconnectDelayMs,
       routeFile: result.config.routeFile,
       drivingStyle: result.config.drivingStyle,
       seed: result.config.seed,
