@@ -2,7 +2,8 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { crc16Ibm, createDryRunOutput, parseConfig, runCli } from "../src";
+import { createDryRunOutput, parseConfig, runCli } from "../src";
+import { assertCodec8ExtendedPacket } from "./fixtures/assert-codec8-extended-packet";
 
 const routeFile = join(__dirname, "fixtures", "city-loop.route.json");
 const baseArgs = [
@@ -43,15 +44,7 @@ describe("dry-run packet output", () => {
 
     for (const line of output.stdoutLines) {
       const packet = Buffer.from(line, "hex");
-      const dataLength = packet.readUInt32BE(4);
-      const dataField = packet.subarray(8, 8 + dataLength);
-
-      expect(packet.subarray(0, 4)).toEqual(Buffer.alloc(4));
-      expect(dataLength).toBe(packet.byteLength - 12);
-      expect(dataField[0]).toBe(0x8e);
-      expect(dataField[1]).toBe(1);
-      expect(dataField[dataField.length - 1]).toBe(1);
-      expect(packet.readUInt32BE(8 + dataLength)).toBe(crc16Ibm(dataField));
+      assertCodec8ExtendedPacket(packet, 1);
     }
   });
 

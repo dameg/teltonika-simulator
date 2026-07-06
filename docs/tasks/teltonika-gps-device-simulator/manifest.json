@@ -282,20 +282,20 @@
       "id": "TASK-022",
       "title": "Add End-To-End Parser-Visible Tests",
       "path": "TASK-022-add-end-to-end-parser-visible-tests",
-      "status": "ready",
+      "status": "completed",
       "workflowVersion": 2,
       "dependsOn": [
         "TASK-015",
         "TASK-021"
       ],
-      "attempt": 0,
+      "attempt": 1,
       "maxAttempts": 5
     },
     {
       "id": "TASK-023",
       "title": "Document CLI Usage And MVP Limits",
       "path": "TASK-023-document-cli-usage-and-mvp-limits",
-      "status": "blocked",
+      "status": "ready",
       "workflowVersion": 2,
       "dependsOn": [
         "TASK-022"
