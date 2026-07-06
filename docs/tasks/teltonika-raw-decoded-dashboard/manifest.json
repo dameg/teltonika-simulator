@@ -1,0 +1,54 @@
+{
+  "version": 2,
+  "workflow": "planner-implementer-reviewer",
+  "sourcePrd": "docs/teltonika-raw-decoded-dashboard-prd.md",
+  "tasks": [
+    {
+      "id": "TASK-001",
+      "title": "Add Reusable Codec 8 Extended Decoder And Error Model",
+      "path": "TASK-001-add-reusable-codec-8-extended-decoder-and-error-model",
+      "status": "ready",
+      "workflowVersion": 2,
+      "dependsOn": [],
+      "attempt": 0,
+      "maxAttempts": 5
+    },
+    {
+      "id": "TASK-002",
+      "title": "Add Dashboard Parser Backend And Launch Wiring",
+      "path": "TASK-002-add-dashboard-parser-backend-and-launch-wiring",
+      "status": "blocked",
+      "workflowVersion": 2,
+      "dependsOn": [
+        "TASK-001"
+      ],
+      "attempt": 0,
+      "maxAttempts": 5
+    },
+    {
+      "id": "TASK-003",
+      "title": "Add Minimal Raw And Decoded Browser Dashboard",
+      "path": "TASK-003-add-minimal-raw-and-decoded-browser-dashboard",
+      "status": "blocked",
+      "workflowVersion": 2,
+      "dependsOn": [
+        "TASK-002"
+      ],
+      "attempt": 0,
+      "maxAttempts": 5
+    },
+    {
+      "id": "TASK-004",
+      "title": "Add Parser-Visible Integration And Dashboard Smoke Tests",
+      "path": "TASK-004-add-parser-visible-integration-and-dashboard-smoke-tests",
+      "status": "blocked",
+      "workflowVersion": 2,
+      "dependsOn": [
+        "TASK-002",
+        "TASK-003"
+      ],
+      "attempt": 0,
+      "maxAttempts": 5
+    }
+  ]
+}
