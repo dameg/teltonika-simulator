@@ -29,7 +29,7 @@
       "id": "TASK-003",
       "title": "Add Minimal Raw And Decoded Browser Dashboard",
       "path": "TASK-003-add-minimal-raw-and-decoded-browser-dashboard",
-      "status": "ready",
+      "status": "completed",
       "workflowVersion": 2,
       "dependsOn": [
         "TASK-002"
@@ -41,7 +41,7 @@
       "id": "TASK-004",
       "title": "Add Parser-Visible Integration And Dashboard Smoke Tests",
       "path": "TASK-004-add-parser-visible-integration-and-dashboard-smoke-tests",
-      "status": "blocked",
+      "status": "ready",
       "workflowVersion": 2,
       "dependsOn": [
         "TASK-002",

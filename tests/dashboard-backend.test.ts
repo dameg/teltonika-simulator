@@ -30,6 +30,23 @@ describe("dashboard backend", () => {
     expect(formatHttpUrl({ address: "::1", port: 8080 })).toBe("http://[::1]:8080/");
   });
 
+  it("serves a minimal html dashboard shell at the root route", async () => {
+    const backend = await useBackend();
+
+    const response = await fetch(formatHttpUrl(backend.webAddress));
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toContain("text/html");
+
+    const html = await response.text();
+    expect(html).toContain("<title>Teltonika Raw And Decoded Dashboard</title>");
+    expect(html).toContain('id="message-list"');
+    expect(html).toContain('id="empty-state"');
+    expect(html).toContain("Waiting for IMEI or AVL packets.");
+    expect(html).toContain('fetch("/messages"');
+    expect(html).toContain("setInterval(refreshMessages, 1000)");
+    expect(html).toContain("Decode Error");
+  });
+
   it("retains accepted imei and decoded avl messages and serves them over http", async () => {
     const backend = await useBackend();
     const controller = new AbortController();
