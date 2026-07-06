@@ -295,12 +295,12 @@
       "id": "TASK-023",
       "title": "Document CLI Usage And MVP Limits",
       "path": "TASK-023-document-cli-usage-and-mvp-limits",
-      "status": "ready",
+      "status": "completed",
       "workflowVersion": 2,
       "dependsOn": [
         "TASK-022"
       ],
-      "attempt": 0,
+      "attempt": 1,
       "maxAttempts": 5
     }
   ]
