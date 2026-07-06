@@ -17,19 +17,19 @@
       "id": "TASK-002",
       "title": "Add Dashboard Parser Backend And Launch Wiring",
       "path": "TASK-002-add-dashboard-parser-backend-and-launch-wiring",
-      "status": "ready",
+      "status": "completed",
       "workflowVersion": 2,
       "dependsOn": [
         "TASK-001"
       ],
-      "attempt": 0,
+      "attempt": 2,
       "maxAttempts": 5
     },
     {
       "id": "TASK-003",
       "title": "Add Minimal Raw And Decoded Browser Dashboard",
       "path": "TASK-003-add-minimal-raw-and-decoded-browser-dashboard",
-      "status": "blocked",
+      "status": "ready",
       "workflowVersion": 2,
       "dependsOn": [
         "TASK-002"

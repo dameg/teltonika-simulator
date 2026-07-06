@@ -134,8 +134,8 @@ function createDryRunConfig() {
     {}
   );
 
-  if (result.kind !== "config") {
-    throw new Error("expected dry-run config");
+  if (result.kind !== "simulator") {
+    throw new Error("expected dry-run simulator config");
   }
 
   return result.config;

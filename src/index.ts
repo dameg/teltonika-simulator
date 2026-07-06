@@ -1,8 +1,10 @@
 import { parseConfig } from "./config";
+import { startDashboardBackend } from "./dashboard-backend";
 import { createDryRunOutput } from "./dry-run";
 import { runMultiDeviceRuntime } from "./multi-device-runtime";
 
 export { helpText, parseConfig } from "./config";
+export { startDashboardBackend } from "./dashboard-backend";
 export { createDryRunOutput, dryRunStartTimestampMs } from "./dry-run";
 export { runLiveSession } from "./live-session";
 export { runMultiDeviceRuntime } from "./multi-device-runtime";
@@ -66,6 +68,14 @@ export type {
 export type { ImeiHandshakeOptions, ImeiHandshakeResult } from "./imei-handshake";
 export type { AvlPacketSendResult } from "./avl-session";
 export type {
+  DashboardBackend,
+  DashboardAvlMessage,
+  DashboardErrorMessage,
+  DashboardImeiMessage,
+  DashboardMessage,
+  DashboardMessageBase
+} from "./dashboard-backend";
+export type {
   Codec8ExtendedDecodeError,
   Codec8ExtendedDecodeErrorKind,
   Codec8ExtendedDecodeResult,
@@ -77,6 +87,7 @@ export type {
   MultiDeviceRuntimeOptions,
   MultiDeviceRuntimeResult
 } from "./multi-device-runtime";
+export type { DashboardConfig, SimulatorConfig } from "./config";
 export type {
   DeterministicSimulationContext,
   DeterministicSimulationOptions,
@@ -91,6 +102,16 @@ export function simulatorName(): string {
   return "teltonika-simulator";
 }
 
+export function formatAddressPort(address: { address: string; port: number }): string {
+  const host = address.address.includes(":") ? `[${address.address}]` : address.address;
+
+  return `${host}:${address.port}`;
+}
+
+export function formatHttpUrl(address: { address: string; port: number }): string {
+  return `http://${formatAddressPort(address)}/`;
+}
+
 export interface CliIo {
   stdout: Pick<NodeJS.WriteStream, "write">;
   stderr: Pick<NodeJS.WriteStream, "write">;
@@ -103,7 +124,7 @@ export async function runCli(argv = process.argv.slice(2), env = process.env, io
     return 0;
   }
 
-  if (result.config.dryRun) {
+  if (result.kind === "simulator" && result.config.dryRun) {
     const output = createDryRunOutput(result.config);
     if (output.stderrLines.length > 0) {
       io.stderr.write(`${output.stderrLines.join("\n")}\n`);
@@ -118,31 +139,53 @@ export async function runCli(argv = process.argv.slice(2), env = process.env, io
   const cleanupProcessHooks = registerTerminationHooks(controller);
 
   try {
-    await runMultiDeviceRuntime({
-      host: result.config.host,
-      port: result.config.port,
-      imeis: result.config.imeis,
-      intervalMs: result.config.intervalMs,
-      reconnectDelayMs: result.config.reconnectDelayMs,
-      routeFile: result.config.routeFile,
-      drivingStyle: result.config.drivingStyle,
-      seed: result.config.seed,
-      deviceProfile: result.config.deviceProfile,
-      signal: controller.signal,
-      logger: {
-        info(message) {
-          io.stderr.write(`${message}\n`);
-        },
-        error(message) {
-          io.stderr.write(`${message}\n`);
-        }
+    if (result.kind === "dashboard") {
+      const backend = await startDashboardBackend(result.config);
+      io.stdout.write(`Teltonika TCP listener: ${formatAddressPort(backend.tcpAddress)}\n`);
+      io.stdout.write(`Dashboard URL: ${formatHttpUrl(backend.webAddress)}\n`);
+
+      try {
+        await waitForAbort(controller.signal);
+      } finally {
+        await backend.close();
       }
-    });
+    } else {
+      await runMultiDeviceRuntime({
+        host: result.config.host,
+        port: result.config.port,
+        imeis: result.config.imeis,
+        intervalMs: result.config.intervalMs,
+        reconnectDelayMs: result.config.reconnectDelayMs,
+        routeFile: result.config.routeFile,
+        drivingStyle: result.config.drivingStyle,
+        seed: result.config.seed,
+        deviceProfile: result.config.deviceProfile,
+        signal: controller.signal,
+        logger: {
+          info(message) {
+            io.stderr.write(`${message}\n`);
+          },
+          error(message) {
+            io.stderr.write(`${message}\n`);
+          }
+        }
+      });
+    }
   } finally {
     cleanupProcessHooks();
   }
 
   return 0;
+}
+
+function waitForAbort(signal: AbortSignal): Promise<void> {
+  if (signal.aborted) {
+    return Promise.resolve();
+  }
+
+  return new Promise((resolve) => {
+    signal.addEventListener("abort", () => resolve(), { once: true });
+  });
 }
 
 if (require.main === module) {

@@ -92,8 +92,8 @@ function configArgs(extraArgs: string[]) {
 
 function createConfig(argv: string[]) {
   const result = parseConfig(argv, {});
-  if (result.kind !== "config") {
-    throw new Error("expected config");
+  if (result.kind !== "simulator") {
+    throw new Error("expected simulator config");
   }
   return result.config;
 }
