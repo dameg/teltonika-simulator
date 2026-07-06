@@ -207,6 +207,8 @@ function connectSocket(host: string, port: number): Promise<Socket> {
     socket.once("error", reject);
     socket.once("connect", () => {
       socket.off("error", reject);
+      // Keep late peer resets from escaping Vitest as unhandled socket errors.
+      socket.on("error", () => {});
       resolve(socket);
     });
   });

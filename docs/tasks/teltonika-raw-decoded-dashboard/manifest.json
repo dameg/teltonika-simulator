@@ -41,13 +41,13 @@
       "id": "TASK-004",
       "title": "Add Parser-Visible Integration And Dashboard Smoke Tests",
       "path": "TASK-004-add-parser-visible-integration-and-dashboard-smoke-tests",
-      "status": "ready",
+      "status": "completed",
       "workflowVersion": 2,
       "dependsOn": [
         "TASK-002",
         "TASK-003"
       ],
-      "attempt": 0,
+      "attempt": 1,
       "maxAttempts": 5
     }
   ]
