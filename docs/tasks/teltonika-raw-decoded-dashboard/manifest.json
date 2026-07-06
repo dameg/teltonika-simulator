@@ -7,7 +7,7 @@
       "id": "TASK-001",
       "title": "Add Reusable Codec 8 Extended Decoder And Error Model",
       "path": "TASK-001-add-reusable-codec-8-extended-decoder-and-error-model",
-      "status": "ready",
+      "status": "completed",
       "workflowVersion": 2,
       "dependsOn": [],
       "attempt": 0,
@@ -17,7 +17,7 @@
       "id": "TASK-002",
       "title": "Add Dashboard Parser Backend And Launch Wiring",
       "path": "TASK-002-add-dashboard-parser-backend-and-launch-wiring",
-      "status": "blocked",
+      "status": "ready",
       "workflowVersion": 2,
       "dependsOn": [
         "TASK-001"

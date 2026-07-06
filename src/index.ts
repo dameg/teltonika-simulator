@@ -35,6 +35,7 @@ export {
 } from "./route";
 export { crc16Ibm, crc16IbmProtocolField } from "./codec-crc";
 export { encodeCodec8ExtendedPacket, encodeCodec8ExtendedRecord } from "./codec8-extended";
+export { decodeCodec8ExtendedPacket } from "./codec8-extended-decoder";
 export { encodeImeiHandshakeFrame, performImeiHandshake } from "./imei-handshake";
 export { sendAvlPacket } from "./avl-session";
 export type {
@@ -64,6 +65,12 @@ export type {
 } from "./domain";
 export type { ImeiHandshakeOptions, ImeiHandshakeResult } from "./imei-handshake";
 export type { AvlPacketSendResult } from "./avl-session";
+export type {
+  Codec8ExtendedDecodeError,
+  Codec8ExtendedDecodeErrorKind,
+  Codec8ExtendedDecodeResult,
+  DecodedCodec8ExtendedPacket
+} from "./codec8-extended-decoder";
 export type { LiveSessionLogger, LiveSessionOptions, LiveSessionResult } from "./live-session";
 export type {
   MultiDeviceRuntimeDeviceResult,
