@@ -6,6 +6,11 @@ import { runMultiDeviceRuntime } from "./multi-device-runtime";
 
 export { helpText, parseConfig } from "./config";
 export { startDashboardBackend } from "./dashboard-backend";
+export {
+  InMemoryDashboardDeviceRepository,
+  InMemoryDashboardLogRepository,
+  InMemoryDashboardRuntimeRepository,
+} from "./dashboard/repositories";
 export { createDryRunOutput, dryRunStartTimestampMs } from "./dry-run";
 export { runLiveSession } from "./live-session";
 export { runMultiDeviceRuntime } from "./multi-device-runtime";
@@ -90,6 +95,18 @@ export type {
 } from "./multi-device-runtime";
 export type { DashboardConfig, SimulatorConfig } from "./config";
 export type {
+  DashboardDeviceConfig,
+  DashboardDeviceRecord,
+  DashboardDomainErrorCode,
+  DashboardLogContextValue,
+  DashboardLogEvent,
+  DashboardLogEventType,
+  DashboardLogSeverity,
+  DashboardRunOverview,
+  DashboardRunRecord,
+  DashboardRunStatus,
+} from "./dashboard/domain";
+export type {
   DeterministicSimulationContext,
   DeterministicSimulationOptions,
   SeededRandom,
@@ -98,6 +115,12 @@ export type {
   VehicleSimulator,
   VehicleSimulatorOptions
 } from "./simulation";
+export {
+  DashboardDomainError,
+  assertUniqueImei,
+  findDuplicateImeis,
+  normalizeImei,
+} from "./dashboard/domain";
 export { createDashboardApp, startDashboardServer, type DashboardServer } from "./dashboard/main";
 
 export function simulatorName(): string {

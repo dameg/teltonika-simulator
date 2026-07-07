@@ -17,7 +17,7 @@
       "id": "TASK-002",
       "title": "Define Dashboard Domain Models And In-Memory Repositories",
       "path": "TASK-002-define-dashboard-domain-models-and-in-memory-repositories",
-      "status": "ready",
+      "status": "completed",
       "workflowVersion": 2,
       "dependsOn": [
         "TASK-001"
@@ -29,7 +29,7 @@
       "id": "TASK-003",
       "title": "Add Device Management API And Bulk IMEI Import",
       "path": "TASK-003-add-device-management-api-and-bulk-imei-import",
-      "status": "blocked",
+      "status": "ready",
       "workflowVersion": 2,
       "dependsOn": [
         "TASK-001",
@@ -42,7 +42,7 @@
       "id": "TASK-004",
       "title": "Add Simulator Runtime Manager And Control Endpoints",
       "path": "TASK-004-add-simulator-runtime-manager-and-control-endpoints",
-      "status": "blocked",
+      "status": "ready",
       "workflowVersion": 2,
       "dependsOn": [
         "TASK-001",
