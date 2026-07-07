@@ -1,0 +1,98 @@
+{
+  "version": 2,
+  "workflow": "planner-implementer-reviewer",
+  "sourcePrd": "docs/teltonika-device-control-dashboard-prd.md",
+  "tasks": [
+    {
+      "id": "TASK-001",
+      "title": "Bootstrap NestJS Dashboard And React App Shell",
+      "path": "TASK-001-bootstrap-nestjs-dashboard-and-react-app-shell",
+      "status": "ready",
+      "workflowVersion": 2,
+      "dependsOn": [],
+      "attempt": 0,
+      "maxAttempts": 5
+    },
+    {
+      "id": "TASK-002",
+      "title": "Define Dashboard Domain Models And In-Memory Repositories",
+      "path": "TASK-002-define-dashboard-domain-models-and-in-memory-repositories",
+      "status": "blocked",
+      "workflowVersion": 2,
+      "dependsOn": [
+        "TASK-001"
+      ],
+      "attempt": 0,
+      "maxAttempts": 5
+    },
+    {
+      "id": "TASK-003",
+      "title": "Add Device Management API And Bulk IMEI Import",
+      "path": "TASK-003-add-device-management-api-and-bulk-imei-import",
+      "status": "blocked",
+      "workflowVersion": 2,
+      "dependsOn": [
+        "TASK-001",
+        "TASK-002"
+      ],
+      "attempt": 0,
+      "maxAttempts": 5
+    },
+    {
+      "id": "TASK-004",
+      "title": "Add Simulator Runtime Manager And Control Endpoints",
+      "path": "TASK-004-add-simulator-runtime-manager-and-control-endpoints",
+      "status": "blocked",
+      "workflowVersion": 2,
+      "dependsOn": [
+        "TASK-001",
+        "TASK-002"
+      ],
+      "attempt": 0,
+      "maxAttempts": 5
+    },
+    {
+      "id": "TASK-005",
+      "title": "Add Status Log And Manual Clear APIs",
+      "path": "TASK-005-add-status-log-and-manual-clear-apis",
+      "status": "blocked",
+      "workflowVersion": 2,
+      "dependsOn": [
+        "TASK-002",
+        "TASK-003",
+        "TASK-004"
+      ],
+      "attempt": 0,
+      "maxAttempts": 5
+    },
+    {
+      "id": "TASK-006",
+      "title": "Build React Dashboard For Device Setup And Runtime Monitoring",
+      "path": "TASK-006-build-react-dashboard-for-device-setup-and-runtime-monitoring",
+      "status": "blocked",
+      "workflowVersion": 2,
+      "dependsOn": [
+        "TASK-001",
+        "TASK-003",
+        "TASK-004",
+        "TASK-005"
+      ],
+      "attempt": 0,
+      "maxAttempts": 5
+    },
+    {
+      "id": "TASK-007",
+      "title": "Add End-To-End Dashboard And Parser-Visible Test Coverage",
+      "path": "TASK-007-add-end-to-end-dashboard-and-parser-visible-test-coverage",
+      "status": "blocked",
+      "workflowVersion": 2,
+      "dependsOn": [
+        "TASK-004",
+        "TASK-005",
+        "TASK-006"
+      ],
+      "attempt": 0,
+      "maxAttempts": 5
+    }
+  ]
+}

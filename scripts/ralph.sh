@@ -7,7 +7,7 @@ set -Eeuo pipefail
 # -----------------------------------------------------------------------------
 
 RALPH_DIR="${RALPH_DIR:-.ralph}"
-TASK_WORKSPACE="${TASK_WORKSPACE:-docs/tasks/teltonika-raw-decoded-dashboard}"
+TASK_WORKSPACE="${TASK_WORKSPACE:-docs/tasks/teltonika-device-control-dashboard}"
 MANIFEST_FILE="${MANIFEST_FILE:-${TASK_WORKSPACE}/manifest.json}"
 
 PLANNER_PROMPT="${PLANNER_PROMPT:-${RALPH_DIR}/prompts/planner.md}"
@@ -20,7 +20,7 @@ RUNTIME_DIR="${RALPH_DIR}/runtime"
 LAST_MESSAGE_FILE="${RUNTIME_DIR}/last-message.md"
 QUALITY_GATE_FILE="${RUNTIME_DIR}/quality-gates.md"
 
-PRD_FILE="${PRD_FILE:-docs/teltonika-raw-decoded-dashboard-prd.md}"
+PRD_FILE="${PRD_FILE:-docs/teltonika-device-control-dashboard-prd.md}"
 
 mkdir -p "$RUNTIME_DIR"
 
