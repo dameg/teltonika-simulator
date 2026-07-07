@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { parseConfig } from "../src";
+import { helpText, parseConfig } from "../src";
 
 const requiredArgs = ["--host", "127.0.0.1", "--port", "5027", "--imei", "123456789012345"];
 
@@ -144,6 +144,11 @@ describe("configuration parsing", () => {
       webPort: 3000,
       acceptImei: true
     });
+  });
+
+  it("advertises the dashboard command as the NestJS shell", () => {
+    expect(helpText).toContain("Start the NestJS dashboard shell");
+    expect(helpText).not.toContain("Start the dashboard parser backend");
   });
 
   it("lets dashboard flags override environment variables", () => {

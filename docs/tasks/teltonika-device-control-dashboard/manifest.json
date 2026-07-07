@@ -7,17 +7,17 @@
       "id": "TASK-001",
       "title": "Bootstrap NestJS Dashboard And React App Shell",
       "path": "TASK-001-bootstrap-nestjs-dashboard-and-react-app-shell",
-      "status": "ready",
+      "status": "completed",
       "workflowVersion": 2,
       "dependsOn": [],
-      "attempt": 0,
+      "attempt": 2,
       "maxAttempts": 5
     },
     {
       "id": "TASK-002",
       "title": "Define Dashboard Domain Models And In-Memory Repositories",
       "path": "TASK-002-define-dashboard-domain-models-and-in-memory-repositories",
-      "status": "blocked",
+      "status": "ready",
       "workflowVersion": 2,
       "dependsOn": [
         "TASK-001"

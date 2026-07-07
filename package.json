@@ -3,13 +3,27 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.json && npm run build:frontend",
+    "build:frontend": "esbuild src/dashboard/frontend/main.tsx --bundle --platform=browser --format=iife --outfile=dist/dashboard/frontend/dashboard-app.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
-    "cli": "node dist/src/index.js"
+    "cli": "node dist/src/cli.js",
+    "dashboard": "node dist/src/dashboard/main.js"
+  },
+  "dependencies": {
+    "@nestjs/common": "11.1.6",
+    "@nestjs/core": "11.1.6",
+    "@nestjs/platform-express": "11.1.6",
+    "react": "19.2.0",
+    "react-dom": "19.2.0",
+    "reflect-metadata": "0.2.2",
+    "rxjs": "7.8.2"
   },
   "devDependencies": {
     "@types/node": "20.19.9",
+    "@types/react": "19.2.2",
+    "@types/react-dom": "19.2.2",
+    "esbuild": "0.25.11",
     "typescript": "5.9.3",
     "vitest": "4.0.18"
   }

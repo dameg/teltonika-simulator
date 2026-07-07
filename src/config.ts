@@ -41,12 +41,12 @@ Simulator options:
   --count, --packet-count <count>  Number of packets to emit
 
 Dashboard options:
-  dashboard                        Start the dashboard parser backend
-  --host <host>                    TCP bind host
-  --port <port>                    TCP bind port
-  --web-host <host>                HTTP bind host
-  --web-port <port>                HTTP bind port
-  --accept-imei <boolean>          Accept or reject incoming IMEI handshakes
+  dashboard                        Start the NestJS dashboard shell
+  --host <host>                    HTTP bind host
+  --port <port>                    HTTP bind port
+  --web-host <host>                Reserved for legacy parser dashboard wiring
+  --web-port <port>                Reserved for legacy parser dashboard wiring
+  --accept-imei <boolean>          Reserved for legacy parser dashboard wiring
 
 General:
   --help                           Show this help

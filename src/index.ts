@@ -1,5 +1,6 @@
 import { parseConfig } from "./config";
 import { startDashboardBackend } from "./dashboard-backend";
+import { startDashboardServer } from "./dashboard/main";
 import { createDryRunOutput } from "./dry-run";
 import { runMultiDeviceRuntime } from "./multi-device-runtime";
 
@@ -97,6 +98,7 @@ export type {
   VehicleSimulator,
   VehicleSimulatorOptions
 } from "./simulation";
+export { createDashboardApp, startDashboardServer, type DashboardServer } from "./dashboard/main";
 
 export function simulatorName(): string {
   return "teltonika-simulator";
@@ -140,14 +142,16 @@ export async function runCli(argv = process.argv.slice(2), env = process.env, io
 
   try {
     if (result.kind === "dashboard") {
-      const backend = await startDashboardBackend(result.config);
-      io.stdout.write(`Teltonika TCP listener: ${formatAddressPort(backend.tcpAddress)}\n`);
-      io.stdout.write(`Dashboard URL: ${formatHttpUrl(backend.webAddress)}\n`);
+      const server = await startDashboardServer({
+        host: result.config.host,
+        port: result.config.port
+      });
+      io.stdout.write(`Dashboard URL: ${server.url}\n`);
 
       try {
         await waitForAbort(controller.signal);
       } finally {
-        await backend.close();
+        await server.close();
       }
     } else {
       await runMultiDeviceRuntime({
@@ -186,18 +190,6 @@ function waitForAbort(signal: AbortSignal): Promise<void> {
   return new Promise((resolve) => {
     signal.addEventListener("abort", () => resolve(), { once: true });
   });
-}
-
-if (require.main === module) {
-  void runCli().then(
-    (exitCode) => {
-      process.exit(exitCode);
-    },
-    (error) => {
-    console.error(error instanceof Error ? error.message : String(error));
-    process.exit(1);
-    }
-  );
 }
 
 function registerTerminationHooks(controller: AbortController): () => void {
