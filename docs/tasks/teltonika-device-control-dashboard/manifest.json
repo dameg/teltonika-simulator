@@ -29,13 +29,13 @@
       "id": "TASK-003",
       "title": "Add Device Management API And Bulk IMEI Import",
       "path": "TASK-003-add-device-management-api-and-bulk-imei-import",
-      "status": "ready",
+      "status": "completed",
       "workflowVersion": 2,
       "dependsOn": [
         "TASK-001",
         "TASK-002"
       ],
-      "attempt": 0,
+      "attempt": 2,
       "maxAttempts": 5
     },
     {
