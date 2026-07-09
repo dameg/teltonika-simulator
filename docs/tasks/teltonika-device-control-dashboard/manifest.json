@@ -55,21 +55,21 @@
       "id": "TASK-005",
       "title": "Add Status Log And Manual Clear APIs",
       "path": "TASK-005-add-status-log-and-manual-clear-apis",
-      "status": "ready",
+      "status": "completed",
       "workflowVersion": 2,
       "dependsOn": [
         "TASK-002",
         "TASK-003",
         "TASK-004"
       ],
-      "attempt": 0,
+      "attempt": 1,
       "maxAttempts": 5
     },
     {
       "id": "TASK-006",
       "title": "Build React Dashboard For Device Setup And Runtime Monitoring",
       "path": "TASK-006-build-react-dashboard-for-device-setup-and-runtime-monitoring",
-      "status": "blocked",
+      "status": "ready",
       "workflowVersion": 2,
       "dependsOn": [
         "TASK-001",

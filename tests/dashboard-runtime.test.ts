@@ -278,6 +278,369 @@ describe("dashboard runtime api", () => {
     expect(logRepository.list({ imei }).some((event) => event.type === "runFailed")).toBe(false);
   });
 
+  it("lists device statuses including configured devices without runtime state", async () => {
+    await createDevice({
+      imei: "888888888888888",
+      label: "Configured Device",
+      enabled: true,
+      host: "127.0.0.1",
+      port: 65001,
+    });
+
+    await createDevice({
+      imei: "999999999999999",
+      label: "Failed Device",
+      enabled: false,
+      host: "127.0.0.1",
+      port: 65002,
+    });
+    runtimeRepository.set({
+      imei: "999999999999999",
+      status: "failed",
+      updatedAtMs: 2_000,
+      lastStartAtMs: 1_000,
+      lastStopAtMs: 2_000,
+      lastError: "Socket closed",
+    });
+
+    const response = await fetch(`${server.url}/api/status/devices`);
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      devices: [
+        {
+          imei: "888888888888888",
+          label: "Configured Device",
+          enabled: true,
+          status: "configured",
+        },
+        {
+          imei: "999999999999999",
+          label: "Failed Device",
+          enabled: false,
+          status: "failed",
+          lastStartAtMs: 1_000,
+          lastStopAtMs: 2_000,
+          lastError: "Socket closed",
+        },
+      ],
+    });
+  });
+
+  it("returns an aggregate overview across configured and runtime-backed devices", async () => {
+    await createDevice({
+      imei: "101010101010101",
+      label: "Configured",
+      enabled: true,
+      host: "127.0.0.1",
+      port: 65003,
+    });
+    await createDevice({
+      imei: "202020202020202",
+      label: "Failed",
+      enabled: true,
+      host: "127.0.0.1",
+      port: 65004,
+    });
+    await createDevice({
+      imei: "303030303030303",
+      label: "Stopped",
+      enabled: false,
+      host: "127.0.0.1",
+      port: 65005,
+    });
+
+    runtimeRepository.set({
+      imei: "202020202020202",
+      status: "failed",
+      updatedAtMs: 1_000,
+      lastError: "Connection refused",
+    });
+    runtimeRepository.set({
+      imei: "303030303030303",
+      status: "stopped",
+      updatedAtMs: 2_000,
+      lastStopAtMs: 2_000,
+    });
+
+    const response = await fetch(`${server.url}/api/status/overview`);
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      total: 3,
+      counts: {
+        configured: 1,
+        starting: 0,
+        running: 0,
+        reconnecting: 0,
+        stopped: 1,
+        rejected: 0,
+        failed: 1,
+        completed: 0,
+      },
+    });
+  });
+
+  it("ignores runtime-only orphan records in status list and overview", async () => {
+    await createDevice({
+      imei: "121212121212121",
+      label: "Configured Device",
+      enabled: true,
+      host: "127.0.0.1",
+      port: 65011,
+    });
+
+    runtimeRepository.set({
+      imei: "121212121212121",
+      status: "failed",
+      updatedAtMs: 2_000,
+      lastStartAtMs: 1_000,
+      lastStopAtMs: 2_000,
+      lastError: "Configured failure",
+    });
+    runtimeRepository.set({
+      imei: "343434343434343",
+      status: "stopped",
+      updatedAtMs: 4_000,
+      lastStartAtMs: 3_000,
+      lastStopAtMs: 4_000,
+      lastError: "Orphan runtime",
+    });
+
+    const devicesResponse = await fetch(`${server.url}/api/status/devices`);
+    expect(devicesResponse.status).toBe(200);
+    await expect(devicesResponse.json()).resolves.toEqual({
+      devices: [
+        {
+          imei: "121212121212121",
+          label: "Configured Device",
+          enabled: true,
+          status: "failed",
+          updatedAtMs: 2_000,
+          lastStartAtMs: 1_000,
+          lastStopAtMs: 2_000,
+          lastError: "Configured failure",
+        },
+      ],
+    });
+
+    const overviewResponse = await fetch(`${server.url}/api/status/overview`);
+    expect(overviewResponse.status).toBe(200);
+    await expect(overviewResponse.json()).resolves.toEqual({
+      total: 1,
+      counts: {
+        configured: 0,
+        starting: 0,
+        running: 0,
+        reconnecting: 0,
+        stopped: 0,
+        rejected: 0,
+        failed: 1,
+        completed: 0,
+      },
+    });
+  });
+
+  it("returns per-device status details", async () => {
+    await createDevice({
+      imei: "404040404040404",
+      label: "Detail Device",
+      enabled: true,
+      host: "127.0.0.1",
+      port: 65006,
+    });
+    runtimeRepository.set({
+      imei: "404040404040404",
+      status: "completed",
+      updatedAtMs: 9_000,
+      lastStartAtMs: 8_000,
+      lastStopAtMs: 9_000,
+    });
+
+    const response = await fetch(`${server.url}/api/status/devices/404040404040404`);
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      device: {
+        imei: "404040404040404",
+        label: "Detail Device",
+        enabled: true,
+        status: "completed",
+        updatedAtMs: 9_000,
+        lastStartAtMs: 8_000,
+        lastStopAtMs: 9_000,
+      },
+    });
+  });
+
+  it("filters recent logs by device, severity, type, and limit", async () => {
+    await createDevice({
+      imei: "505050505050505",
+      label: "Log Device",
+      enabled: true,
+      host: "127.0.0.1",
+      port: 65007,
+    });
+
+    logRepository.append({
+      id: "log-1",
+      imei: "505050505050505",
+      severity: "info",
+      type: "simulationStartRequested",
+      message: "Started",
+      timestampMs: 1_000,
+    });
+    logRepository.append({
+      id: "log-2",
+      imei: "505050505050505",
+      severity: "warn",
+      type: "reconnectAttempted",
+      message: "Reconnect 1",
+      timestampMs: 2_000,
+    });
+    logRepository.append({
+      id: "log-3",
+      severity: "error",
+      type: "runFailed",
+      message: "Global failure",
+      timestampMs: 3_000,
+    });
+    logRepository.append({
+      id: "log-4",
+      imei: "505050505050505",
+      severity: "warn",
+      type: "reconnectAttempted",
+      message: "Reconnect 2",
+      timestampMs: 4_000,
+    });
+
+    const response = await fetch(
+      `${server.url}/api/logs?imei=505050505050505&severity=warn&type=reconnectAttempted&limit=1`,
+    );
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      events: [
+        {
+          id: "log-4",
+          imei: "505050505050505",
+          severity: "warn",
+          type: "reconnectAttempted",
+          message: "Reconnect 2",
+          timestampMs: 4_000,
+        },
+      ],
+    });
+  });
+
+  it("clears global logs and per-device logs through the api", async () => {
+    await createDevice({
+      imei: "606060606060606",
+      label: "Clear Logs Device",
+      enabled: true,
+      host: "127.0.0.1",
+      port: 65008,
+    });
+    await createDevice({
+      imei: "707070707070707",
+      label: "Keep Logs Device",
+      enabled: true,
+      host: "127.0.0.1",
+      port: 65009,
+    });
+
+    logRepository.append({
+      id: "clear-1",
+      imei: "606060606060606",
+      severity: "info",
+      type: "simulationStartRequested",
+      message: "A",
+      timestampMs: 1_000,
+    });
+    logRepository.append({
+      id: "clear-2",
+      imei: "707070707070707",
+      severity: "info",
+      type: "simulationStartRequested",
+      message: "B",
+      timestampMs: 2_000,
+    });
+
+    const clearDeviceResponse = await fetch(
+      `${server.url}/api/logs/devices/606060606060606`,
+      { method: "DELETE" },
+    );
+    expect(clearDeviceResponse.status).toBe(204);
+    expect(logRepository.list({ imei: "606060606060606" })).toEqual([]);
+    expect(logRepository.list({ imei: "707070707070707" })).toHaveLength(1);
+
+    const clearAllResponse = await fetch(`${server.url}/api/logs`, { method: "DELETE" });
+    expect(clearAllResponse.status).toBe(204);
+    expect(logRepository.list()).toEqual([]);
+  });
+
+  it("clears dashboard-owned in-memory state when no runs are active", async () => {
+    await createDevice({
+      imei: "808080808080808",
+      label: "Clear State Device",
+      enabled: true,
+      host: "127.0.0.1",
+      port: 65010,
+    });
+    runtimeRepository.set({
+      imei: "808080808080808",
+      status: "failed",
+      updatedAtMs: 1_000,
+      lastError: "boom",
+    });
+    logRepository.append({
+      id: "state-1",
+      imei: "808080808080808",
+      severity: "error",
+      type: "runFailed",
+      message: "boom",
+      timestampMs: 1_000,
+    });
+
+    const response = await fetch(`${server.url}/api/status/state`, { method: "DELETE" });
+    expect(response.status).toBe(204);
+    expect(deviceRepository.list()).toEqual([]);
+    expect(runtimeRepository.list()).toEqual([]);
+    expect(logRepository.list()).toEqual([]);
+  });
+
+  it("rejects dashboard state clear while a run is active", async () => {
+    const backend = await useBackend();
+    const imei = "909090909090909";
+
+    await createDevice({
+      imei,
+      label: "Active State Device",
+      enabled: true,
+      host: backend.tcpAddress.address,
+      port: backend.tcpAddress.port,
+      packetCount: 6,
+    });
+
+    const startResponse = await fetch(`${server.url}/api/runtime/devices/${imei}/start`, {
+      method: "POST",
+    });
+    expect(startResponse.status).toBe(200);
+
+    await waitFor(() => {
+      const status = runtimeRepository.get(imei)?.status;
+      return status === "starting" || status === "running" || status === "reconnecting";
+    });
+
+    const clearResponse = await fetch(`${server.url}/api/status/state`, {
+      method: "DELETE",
+    });
+    expect(clearResponse.status).toBe(409);
+    await expect(clearResponse.json()).resolves.toEqual({
+      error: {
+        code: "ACTIVE_RUNS_PRESENT",
+        message: `Cannot clear dashboard state while runs are active: ${imei}`,
+      },
+    });
+    expect(deviceRepository.get(imei)).toBeDefined();
+  });
+
   async function useBackend(
     overrides: Partial<Parameters<typeof startDashboardBackend>[0]> = {},
   ): Promise<DashboardBackend> {
