@@ -119,7 +119,15 @@ async function runConnectionAttempt(
       host: options.host,
       port: options.port,
       imei: options.imei,
-      signal: options.signal
+      signal: options.signal,
+      onConnected: () => {
+        options.logger.info(
+          `tcp connected host=${options.host} port=${options.port} imei=${options.imei}`
+        );
+      },
+      onImeiSent: () => {
+        options.logger.info(`imei sent imei=${options.imei}`);
+      }
     });
 
     if (handshake.kind === "rejected") {

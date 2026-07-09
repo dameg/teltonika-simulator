@@ -1,55 +1,102 @@
+import { build } from "esbuild";
+import { mkdir } from "node:fs/promises";
 import { createConnection, type Socket } from "node:net";
+import { dirname, resolve } from "node:path";
 import { join } from "node:path";
 
-import { afterEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 
 import {
   createDryRunOutput,
   encodeImeiHandshakeFrame,
   formatHttpUrl,
+  InMemoryDashboardLogRepository,
   parseConfig,
-  runLiveSession,
   startDashboardBackend,
+  startDashboardServer,
   type DashboardBackend,
+  type DashboardServer,
   type DashboardMessage
 } from "../src";
 
+const frontendEntry = resolve(process.cwd(), "src/dashboard/frontend/main.tsx");
+const frontendOutfile = resolve(process.cwd(), "dist/dashboard/frontend/dashboard-app.js");
 const routeFile = join(__dirname, "fixtures", "city-loop.route.json");
 
 describe("end-to-end parser-visible coverage", () => {
   const backends: DashboardBackend[] = [];
+  let dashboardServer: DashboardServer;
+  let logRepository: InMemoryDashboardLogRepository;
+
+  beforeAll(async () => {
+    await mkdir(dirname(frontendOutfile), { recursive: true });
+    await build({
+      entryPoints: [frontendEntry],
+      outfile: frontendOutfile,
+      bundle: true,
+      format: "esm",
+      platform: "browser",
+      target: ["es2020"],
+      jsx: "automatic",
+      sourcemap: false,
+      logLevel: "silent"
+    });
+
+    dashboardServer = await startDashboardServer({ host: "127.0.0.1", port: 0 });
+    logRepository = dashboardServer.app.get(InMemoryDashboardLogRepository);
+  });
 
   afterEach(async () => {
     await Promise.allSettled(backends.splice(0).map((backend) => backend.close()));
   });
 
+  afterAll(async () => {
+    await dashboardServer.close();
+  });
+
   it("surfaces accepted imei and decoded avl packets through the dashboard messages api", async () => {
     const backend = await useBackend();
-    const controller = new AbortController();
     const imei = "123456789012345";
 
-    const sessionPromise = runLiveSession({
-      host: backend.tcpAddress.address,
-      port: backend.tcpAddress.port,
-      imei,
-      intervalMs: 25,
-      routeFile,
-      drivingStyle: "normal",
-      seed: 7,
-      deviceProfile: "default-codec8e",
-      signal: controller.signal
+    const createResponse = await fetch(`${dashboardServer.url}/api/devices`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        imei,
+        label: "Parser Coverage Device",
+        enabled: true,
+        config: {
+          host: backend.tcpAddress.address,
+          port: backend.tcpAddress.port,
+          intervalMs: 25,
+          reconnectDelayMs: 25,
+          routeFile,
+          drivingStyle: "normal",
+          seed: 7,
+          deviceProfile: "default-codec8e",
+          packetCount: 2
+        }
+      })
     });
+    expect(createResponse.status).toBe(201);
+
+    const startResponse = await fetch(`${dashboardServer.url}/api/runtime/devices/${imei}/start`, {
+      method: "POST"
+    });
+    expect(startResponse.status).toBe(200);
 
     await waitFor(async () => {
       const messages = await fetchMessages(backend);
       return messages.some((message) => message.type === "avl");
-    });
-
-    controller.abort();
-    await expect(sessionPromise).resolves.toEqual({ kind: "completed" });
+    }, 3_000);
 
     const messages = await fetchMessages(backend);
     expect(messages).toHaveLength(2);
+
+    const logTypes = logRepository.list({ imei }).map((event) => event.type);
+    expect(logTypes).toContain("tcpConnected");
+    expect(logTypes).toContain("imeiSent");
+    expect(logTypes).toContain("imeiAccepted");
 
     const [imeiMessage, avlMessage] = messages;
     expect(imeiMessage).toMatchObject({
@@ -70,6 +117,11 @@ describe("end-to-end parser-visible coverage", () => {
     expect(avlMessage.decoded.recordCount).toBeGreaterThan(0);
     expect(avlMessage.decoded.records[0]?.gps.longitude).toBeTypeOf("number");
     expect(avlMessage.decoded.records[0]?.gps.latitude).toBeTypeOf("number");
+
+    const stopResponse = await fetch(`${dashboardServer.url}/api/runtime/devices/${imei}/stop`, {
+      method: "POST"
+    });
+    expect(stopResponse.status).toBe(200);
   });
 
   it("surfaces malformed packets as parser-visible dashboard errors without duplicating parser logic", async () => {

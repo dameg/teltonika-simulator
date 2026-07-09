@@ -72,6 +72,10 @@ export async function startDashboardBackend(config: DashboardConfig): Promise<Da
     socket.on("close", () => {
       states.delete(socket);
     });
+
+    socket.on("error", () => {
+      states.delete(socket);
+    });
   });
 
   const webServer = createHttpServer((request, response) => {

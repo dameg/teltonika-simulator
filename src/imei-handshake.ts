@@ -5,6 +5,8 @@ export interface ImeiHandshakeOptions {
   port: number;
   imei: string;
   signal?: AbortSignal;
+  onConnected?: (socket: net.Socket) => void;
+  onImeiSent?: (socket: net.Socket) => void;
 }
 
 export interface AcceptedImeiHandshake {
@@ -39,7 +41,9 @@ export async function performImeiHandshake(options: ImeiHandshakeOptions): Promi
     });
 
     socket.once("connect", () => {
+      options.onConnected?.(socket);
       socket.write(frame);
+      options.onImeiSent?.(socket);
     });
 
     socket.on("data", (chunk) => {
