@@ -69,7 +69,7 @@
       "id": "TASK-006",
       "title": "Build React Dashboard For Device Setup And Runtime Monitoring",
       "path": "TASK-006-build-react-dashboard-for-device-setup-and-runtime-monitoring",
-      "status": "ready",
+      "status": "completed",
       "workflowVersion": 2,
       "dependsOn": [
         "TASK-001",
@@ -77,14 +77,14 @@
         "TASK-004",
         "TASK-005"
       ],
-      "attempt": 0,
+      "attempt": 2,
       "maxAttempts": 5
     },
     {
       "id": "TASK-007",
       "title": "Add End-To-End Dashboard And Parser-Visible Test Coverage",
       "path": "TASK-007-add-end-to-end-dashboard-and-parser-visible-test-coverage",
-      "status": "blocked",
+      "status": "ready",
       "workflowVersion": 2,
       "dependsOn": [
         "TASK-004",

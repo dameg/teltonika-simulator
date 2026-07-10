@@ -41,7 +41,12 @@ describe("dashboard app shell", () => {
 
     const frontendBundle = await frontendResponse.text();
     expect(frontendBundle).toContain("Teltonika Device Control");
-    expect(frontendBundle).toContain("Device Registry");
+    expect(frontendBundle).toContain("Device setup");
+    expect(frontendBundle).toContain("Bulk import IMEIs");
+    expect(frontendBundle).toContain("Start all enabled");
+    expect(frontendBundle).toContain("Recent logs");
+    expect(frontendBundle).toContain("Clear dashboard state");
+    expect(frontendBundle).toContain("/api/status/overview");
 
     const healthResponse = await fetch(`${baseUrl}/api/health`);
 
