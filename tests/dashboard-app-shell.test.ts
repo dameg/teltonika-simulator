@@ -45,8 +45,13 @@ describe("dashboard app shell", () => {
     expect(frontendBundle).toContain("Bulk import IMEIs");
     expect(frontendBundle).toContain("Start all enabled");
     expect(frontendBundle).toContain("Recent logs");
+    expect(frontendBundle).toContain("Polling every second");
+    expect(frontendBundle).toContain("Clear logs");
     expect(frontendBundle).toContain("Clear dashboard state");
+    expect(frontendBundle).toContain("/api/status/devices");
     expect(frontendBundle).toContain("/api/status/overview");
+    expect(frontendBundle).toContain("/api/logs?limit=100");
+    expect(frontendBundle).toContain("/api/status/state");
 
     const healthResponse = await fetch(`${baseUrl}/api/health`);
 

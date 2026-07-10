@@ -84,7 +84,7 @@
       "id": "TASK-007",
       "title": "Add End-To-End Dashboard And Parser-Visible Test Coverage",
       "path": "TASK-007-add-end-to-end-dashboard-and-parser-visible-test-coverage",
-      "status": "ready",
+      "status": "completed",
       "workflowVersion": 2,
       "dependsOn": [
         "TASK-004",
