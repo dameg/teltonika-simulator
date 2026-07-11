@@ -38,6 +38,28 @@ describe("route loading", () => {
     expect(route.points.map((point) => point.latitude)).toEqual([54.6872, 54.688, 54.6891]);
   });
 
+  it("loads the reusable Krakow-Berlin road route", () => {
+    const route = loadRouteFromFile(join(__dirname, "..", "routes", "krakow-berlin.route.json"));
+    const oneWayDistanceMeters = buildRouteGeometry(route).segments.slice(0, -1).reduce((sum, segment) => sum + segment.distanceMeters, 0);
+
+    expect(route.points).toHaveLength(1_383);
+    expect(route.points[0]).toMatchObject({ latitude: 50.049649, longitude: 19.944352 });
+    expect(route.points.at(-1)).toMatchObject({ latitude: 52.520001, longitude: 13.404964 });
+    expect(oneWayDistanceMeters).toBeGreaterThan(600_000);
+    expect(oneWayDistanceMeters).toBeLessThan(610_000);
+  });
+
+  it("loads the reusable Munich-Rome road route", () => {
+    const route = loadRouteFromFile(join(__dirname, "..", "routes", "munich-rome.route.json"));
+    const oneWayDistanceMeters = buildRouteGeometry(route).segments.slice(0, -1).reduce((sum, segment) => sum + segment.distanceMeters, 0);
+
+    expect(route.points).toHaveLength(2_206);
+    expect(route.points[0]).toMatchObject({ latitude: 48.136651, longitude: 11.577253 });
+    expect(route.points.at(-1)).toMatchObject({ latitude: 41.902866, longitude: 12.496497 });
+    expect(oneWayDistanceMeters).toBeGreaterThan(910_000);
+    expect(oneWayDistanceMeters).toBeLessThan(920_000);
+  });
+
   it("fails clearly for invalid JSON", () => {
     expect(() => loadRouteFromFile(join(fixturesDir, "invalid-json.route.json"))).toThrow(/Invalid route JSON/);
   });

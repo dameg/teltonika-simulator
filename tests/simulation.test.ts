@@ -9,7 +9,8 @@ import {
   createVehicleSimulator,
   loadRouteFromFile,
   resolveSimulationRoute,
-  simulationDeterminismKey
+  simulationDeterminismKey,
+  simulationSpeedMultiplier
 } from "../src";
 import type { RouteDefinition } from "../src";
 
@@ -71,6 +72,18 @@ describe("deterministic simulation clock and randomness", () => {
 });
 
 describe("vehicle movement simulation", () => {
+  it("scales simulation time from one tenth to ten times real time", () => {
+    const baseOptions = { route, drivingStyle: "normal", seed: 7, startTimestampMs: 1_700_000_000_000, intervalMs: 1000 } as const;
+    const slow = states(createVehicleSimulator({ ...baseOptions, simulationSpeed: -10 }), 2);
+    const fast = states(createVehicleSimulator({ ...baseOptions, simulationSpeed: 10 }), 2);
+
+    expect([simulationSpeedMultiplier(-10), simulationSpeedMultiplier(0), simulationSpeedMultiplier(10)]).toEqual([0.1, 1, 10]);
+    expect((slow[1]?.timestampMs ?? 0) - (slow[0]?.timestampMs ?? 0)).toBe(100);
+    expect((fast[1]?.timestampMs ?? 0) - (fast[0]?.timestampMs ?? 0)).toBe(10_000);
+    expect(fast[1]?.tripDistanceMeters).toBeGreaterThan(slow[1]?.tripDistanceMeters ?? Number.POSITIVE_INFINITY);
+    expect(() => simulationSpeedMultiplier(11)).toThrow("between -10 and 10");
+  });
+
   it("produces the same vehicle-state sequence for the same route, style, seed, and interval", () => {
     const route = loadRouteFromFile(join(fixturesDir, "city-loop.route.json"));
     const options = { route, drivingStyle: "normal", seed: 99, startTimestampMs: 1_700_000_000_000, intervalMs: 1000 } as const;
@@ -110,6 +123,7 @@ describe("vehicle movement simulation", () => {
 
     expect(generated.every((state) => state.ignitionOn)).toBe(true);
     expect(generated.some((state) => state.movement)).toBe(true);
+    expect(generated[7]?.tripDistanceMeters).toBeGreaterThan(generated[1]?.tripDistanceMeters ?? Number.POSITIVE_INFINITY);
     expect(generated[2]?.position.latitude).toBeGreaterThan(generated[1]?.position.latitude ?? Number.POSITIVE_INFINITY);
     expect(generated[2]?.position.latitude).toBeLessThan(route.points[1]?.latitude ?? Number.NEGATIVE_INFINITY);
     expect(generated[2]?.position.longitude).toBeGreaterThan(generated[1]?.position.longitude ?? Number.POSITIVE_INFINITY);

@@ -3,6 +3,7 @@ import { Module } from "@nestjs/common";
 import {
   InMemoryDashboardDeviceRepository,
   InMemoryDashboardLogRepository,
+  InMemoryDashboardPositionRepository,
   InMemoryDashboardRuntimeRepository,
 } from "./repositories";
 
@@ -11,11 +12,13 @@ import {
     InMemoryDashboardDeviceRepository,
     InMemoryDashboardRuntimeRepository,
     InMemoryDashboardLogRepository,
+    InMemoryDashboardPositionRepository,
   ],
   exports: [
     InMemoryDashboardDeviceRepository,
     InMemoryDashboardRuntimeRepository,
     InMemoryDashboardLogRepository,
+    InMemoryDashboardPositionRepository,
   ],
 })
 export class DashboardRepositoriesModule {}

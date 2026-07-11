@@ -31,6 +31,7 @@ describe("dashboard device management API", () => {
       target: ["es2020"],
       jsx: "automatic",
       sourcemap: false,
+      loader: { ".png": "dataurl" },
       logLevel: "silent"
     });
 

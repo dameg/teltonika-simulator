@@ -21,7 +21,7 @@ export function mapVehicleStateToAvlRecord(state: VehicleState, profile: DeviceP
     if (value === undefined) {
       continue;
     }
-    addNumericIo({ id: mapping.ioId, value }, oneByte, twoBytes, fourBytes);
+    addNumericIo({ id: mapping.ioId, value }, oneByte, twoBytes, fourBytes, mapping.bytes);
   }
 
   return {
@@ -62,6 +62,36 @@ function valueForMapping(state: VehicleState, source: DeviceProfile["ioMappings"
       return state.position.hasGpsFix ? state.position.satellites : 0;
     case "hasGpsFix":
       return bool(state.position.hasGpsFix);
+    case "brakeSwitch":
+      return bool(state.brakingMps2 > 0.1);
+    case "wheelBasedSpeed":
+      return Math.round(state.speedKph);
+    case "cruiseControlActive":
+      return bool(state.speedKph >= 45 && Math.abs(state.accelerationMps2) < 0.2);
+    case "clutchSwitch":
+      return bool(state.movement && Math.abs(state.accelerationMps2) > 1);
+    case "ptoState":
+      return 0;
+    case "acceleratorPedalPosition":
+      return clamp(Math.round(12 + state.speedKph * 0.7 + Math.max(0, state.accelerationMps2) * 15), 0, 100);
+    case "engineLoad":
+      return clamp(Math.round(20 + state.speedKph * 0.8 + Math.max(0, state.accelerationMps2) * 18), 0, 100);
+    case "engineTotalFuelUsed":
+      return 25_000 + Math.floor(state.tripDistanceMeters / 3_000);
+    case "fuelLevelPercent":
+      return clamp(78 - Math.floor(state.tripDistanceMeters / 6_000), 0, 100);
+    case "engineRpm":
+      return state.isIdling ? 650 : clamp(Math.round(800 + state.speedKph * 32 + Math.max(0, state.accelerationMps2) * 140), 650, 2_500);
+    case "axleWeight1":
+      return 5_200;
+    case "axleWeight2":
+      return 7_800;
+    case "axleWeight3":
+      return 7_600;
+    case "totalOdometerMeters":
+      return 500_000_000 + Math.floor(state.tripDistanceMeters);
+    case "tripDistanceMeters":
+      return Math.floor(state.tripDistanceMeters);
     default:
       return eventValue(state, source);
   }
@@ -75,18 +105,28 @@ function addNumericIo(
   element: AvlIoElement<number>,
   oneByte: AvlIoElement<number>[],
   twoBytes: AvlIoElement<number>[],
-  fourBytes: AvlIoElement<number>[]
+  fourBytes: AvlIoElement<number>[],
+  bytes?: 1 | 2 | 4
 ): void {
   if (!Number.isSafeInteger(element.value) || element.value < 0 || element.value > 0xffffffff) {
     throw new RangeError(`IO value for ${element.id} must be an unsigned 32-bit integer`);
   }
-  if (element.value <= 0xff) {
+  const size = bytes ?? (element.value <= 0xff ? 1 : element.value <= 0xffff ? 2 : 4);
+  const max = size === 1 ? 0xff : size === 2 ? 0xffff : 0xffffffff;
+  if (element.value > max) {
+    throw new RangeError(`IO value for ${element.id} does not fit in ${size} byte(s)`);
+  }
+  if (size === 1) {
     oneByte.push(element);
-  } else if (element.value <= 0xffff) {
+  } else if (size === 2) {
     twoBytes.push(element);
   } else {
     fourBytes.push(element);
   }
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
 }
 
 function bool(value: boolean): number {

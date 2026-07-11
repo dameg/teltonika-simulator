@@ -76,6 +76,7 @@ export interface VehicleState {
   timestampMs: number;
   position: VehiclePosition;
   speedKph: number;
+  tripDistanceMeters: number;
   accelerationMps2: number;
   brakingMps2: number;
   isStopped: boolean;
@@ -95,7 +96,22 @@ export type VehicleStateField =
   | "batteryVoltageMv"
   | "isIdling"
   | "satellites"
-  | "hasGpsFix";
+  | "hasGpsFix"
+  | "brakeSwitch"
+  | "wheelBasedSpeed"
+  | "cruiseControlActive"
+  | "clutchSwitch"
+  | "ptoState"
+  | "acceleratorPedalPosition"
+  | "engineLoad"
+  | "engineTotalFuelUsed"
+  | "fuelLevelPercent"
+  | "engineRpm"
+  | "axleWeight1"
+  | "axleWeight2"
+  | "axleWeight3"
+  | "totalOdometerMeters"
+  | "tripDistanceMeters";
 
 export interface DeviceProfileDefaults {
   priority: number;
@@ -106,6 +122,7 @@ export interface DeviceProfileDefaults {
 export interface DeviceIoMappingRule {
   ioId: number;
   source: VehicleStateField | DrivingEventType;
+  bytes?: 1 | 2 | 4;
 }
 
 export interface DeviceProfile {

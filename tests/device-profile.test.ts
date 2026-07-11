@@ -1,7 +1,12 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
-import { defaultCodec8ExtendedDeviceProfile, getDeviceProfile, validateDeviceProfile } from "../src";
+import {
+  defaultCodec8ExtendedDeviceProfile,
+  fmc650FmsDeviceProfile,
+  getDeviceProfile,
+  validateDeviceProfile
+} from "../src";
 import type { DeviceProfile } from "../src";
 
 describe("device profiles", () => {
@@ -12,6 +17,21 @@ describe("device profiles", () => {
       codec: "codec8e",
       modelName: "Default Codec 8 Extended"
     });
+  });
+
+  it("provides an FMC650 FMS profile with official IO IDs and element sizes", () => {
+    expect(getDeviceProfile("fmc650-fms")).toBe(fmc650FmsDeviceProfile);
+    expect(fmc650FmsDeviceProfile.ioMappings).toEqual(
+      expect.arrayContaining([
+        { ioId: 79, source: "brakeSwitch", bytes: 1 },
+        { ioId: 80, source: "wheelBasedSpeed", bytes: 4 },
+        { ioId: 84, source: "acceleratorPedalPosition", bytes: 4 },
+        { ioId: 85, source: "engineLoad", bytes: 1 },
+        { ioId: 86, source: "engineTotalFuelUsed", bytes: 4 },
+        { ioId: 87, source: "fuelLevelPercent", bytes: 4 },
+        { ioId: 88, source: "engineRpm", bytes: 4 }
+      ])
+    );
   });
 
   it("maps vehicle state and events to explicit IO IDs", () => {

@@ -8,6 +8,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 import {
   InMemoryDashboardDeviceRepository,
   InMemoryDashboardLogRepository,
+  InMemoryDashboardPositionRepository,
   InMemoryDashboardRuntimeRepository,
   startDashboardBackend,
   startDashboardServer,
@@ -24,6 +25,7 @@ describe("dashboard runtime api", () => {
   let deviceRepository: InMemoryDashboardDeviceRepository;
   let runtimeRepository: InMemoryDashboardRuntimeRepository;
   let logRepository: InMemoryDashboardLogRepository;
+  let positionRepository: InMemoryDashboardPositionRepository;
   const backends: DashboardBackend[] = [];
   const extraServers: Server[] = [];
 
@@ -38,6 +40,7 @@ describe("dashboard runtime api", () => {
       target: ["es2020"],
       jsx: "automatic",
       sourcemap: false,
+      loader: { ".png": "dataurl" },
       logLevel: "silent",
     });
 
@@ -45,12 +48,14 @@ describe("dashboard runtime api", () => {
     deviceRepository = server.app.get(InMemoryDashboardDeviceRepository);
     runtimeRepository = server.app.get(InMemoryDashboardRuntimeRepository);
     logRepository = server.app.get(InMemoryDashboardLogRepository);
+    positionRepository = server.app.get(InMemoryDashboardPositionRepository);
   });
 
   beforeEach(() => {
     deviceRepository.clear();
     runtimeRepository.clear();
     logRepository.clear();
+    positionRepository.clear();
   });
 
   afterEach(async () => {
@@ -107,6 +112,14 @@ describe("dashboard runtime api", () => {
     });
 
     await waitFor(() => runtimeRepository.get(imei)?.status === "running");
+    await waitFor(() => positionRepository.list(imei).length > 0);
+
+    const positionResponse = await fetch(`${server.url}/api/status/positions/${imei}`);
+    expect(positionResponse.status).toBe(200);
+    const positionBody = await positionResponse.json() as { positions: unknown[] };
+    expect(positionBody.positions).toEqual(expect.arrayContaining([
+      expect.objectContaining({ imei, latitude: 54.6872, longitude: 25.2797, satellites: 12 }),
+    ]));
 
     const duplicateResponse = await fetch(`${server.url}/api/runtime/devices/${imei}/start`, {
       method: "POST",
@@ -132,7 +145,13 @@ describe("dashboard runtime api", () => {
     expect(logTypes).toContain("tcpConnected");
     expect(logTypes).toContain("imeiSent");
     expect(logTypes).toContain("imeiAccepted");
+    expect(logTypes).toContain("avlPacketSent");
     expect(logTypes).toContain("runStopped");
+    expect(logRepository.list({ imei, type: "avlPacketSent" })[0]?.data).toMatchObject({
+      protocol: "codec8e",
+      rawHex: expect.stringMatching(/^[0-9a-f]+$/),
+      record: { gps: { satellites: 12 } },
+    });
   });
 
   it("starts selected devices and stop-all stops each active run", async () => {

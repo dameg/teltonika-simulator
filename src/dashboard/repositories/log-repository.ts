@@ -64,5 +64,6 @@ function cloneLogEvent(event: DashboardLogEvent): DashboardLogEvent {
           ...event.context,
         }
       : undefined,
+    data: event.data === undefined ? undefined : structuredClone(event.data),
   };
 }

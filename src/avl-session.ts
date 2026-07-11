@@ -6,6 +6,7 @@ import type { AvlRecord } from "./domain";
 
 export interface AvlPacketSendResult {
   acceptedRecordCount: number;
+  packetHex: string;
 }
 
 export async function sendAvlPacket(
@@ -28,7 +29,7 @@ export async function sendAvlPacket(
       );
     }
 
-    return { acceptedRecordCount };
+    return { acceptedRecordCount, packetHex: packet.toString("hex") };
   } catch (error) {
     if (!socket.destroyed) {
       socket.destroy();

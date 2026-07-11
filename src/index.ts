@@ -9,6 +9,7 @@ export { startDashboardBackend } from "./dashboard-backend";
 export {
   InMemoryDashboardDeviceRepository,
   InMemoryDashboardLogRepository,
+  InMemoryDashboardPositionRepository,
   InMemoryDashboardRuntimeRepository,
 } from "./dashboard/repositories";
 export { createDryRunOutput, dryRunStartTimestampMs } from "./dry-run";
@@ -19,6 +20,7 @@ export {
 } from "./avl-mapping";
 export {
   defaultCodec8ExtendedDeviceProfile,
+  fmc650FmsDeviceProfile,
   deviceProfiles,
   getDeviceProfile,
   validateDeviceProfile
@@ -29,7 +31,8 @@ export {
   createSeededRandom,
   createSimulationClock,
   createVehicleSimulator,
-  simulationDeterminismKey
+  simulationDeterminismKey,
+  simulationSpeedMultiplier
 } from "./simulation";
 export { toTeltonikaLatitude, toTeltonikaLongitude } from "./domain";
 export {
@@ -102,6 +105,7 @@ export type {
   DashboardLogEvent,
   DashboardLogEventType,
   DashboardLogSeverity,
+  DashboardPosition,
   DashboardRunOverview,
   DashboardRunRecord,
   DashboardRunStatus,

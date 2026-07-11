@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   InMemoryDashboardDeviceRepository,
   InMemoryDashboardLogRepository,
+  InMemoryDashboardPositionRepository,
   InMemoryDashboardRuntimeRepository,
   type DashboardDeviceRecord,
   type DashboardLogEvent,
@@ -150,6 +151,29 @@ describe("dashboard repositories", () => {
     expect(repository.list()).toEqual([]);
   });
 
+  it("keeps a bounded position history per device", () => {
+    const repository = new InMemoryDashboardPositionRepository();
+    const point = {
+      imei: "123456789012345",
+      timestampMs: 1,
+      latitude: 54.6872,
+      longitude: 25.2797,
+      altitudeMeters: 120,
+      headingDegrees: 45,
+      speedKph: 30,
+      satellites: 12,
+    };
+
+    for (let index = 0; index < 1_005; index += 1) {
+      repository.append({ ...point, timestampMs: index });
+    }
+
+    expect(repository.list(point.imei)).toHaveLength(1_000);
+    expect(repository.list(point.imei)[0]?.timestampMs).toBe(5);
+    repository.clearByDevice(point.imei);
+    expect(repository.list()).toEqual([]);
+  });
+
   it("keeps repository instances process-local", () => {
     const devicesA = new InMemoryDashboardDeviceRepository();
     const devicesB = new InMemoryDashboardDeviceRepository();
@@ -157,13 +181,17 @@ describe("dashboard repositories", () => {
     const runsB = new InMemoryDashboardRuntimeRepository();
     const logsA = new InMemoryDashboardLogRepository();
     const logsB = new InMemoryDashboardLogRepository();
+    const positionsA = new InMemoryDashboardPositionRepository();
+    const positionsB = new InMemoryDashboardPositionRepository();
 
     devicesA.create(createDeviceInput("123456789012345"));
     runsA.set(createRunRecord("123456789012345", "running"));
     logsA.append(createLogEvent("1"));
+    positionsA.append({ imei: "123456789012345", timestampMs: 1, latitude: 1, longitude: 1, altitudeMeters: 1, headingDegrees: 1, speedKph: 1, satellites: 1 });
 
     expect(devicesB.list()).toEqual([]);
     expect(runsB.list()).toEqual([]);
     expect(logsB.list()).toEqual([]);
+    expect(positionsB.list()).toEqual([]);
   });
 });

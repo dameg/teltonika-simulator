@@ -118,7 +118,7 @@ Each IMEI gets its own live session. Multi-device runs stay deterministic by der
 
 ## Route Files
 
-If `--route-file` is omitted, the simulator uses a built-in fallback route with three sample points near Vilnius. That fallback is useful for smoke testing, but real parser validation should usually provide an explicit route. This repository already includes a runnable sample route at `./tests/fixtures/city-loop.route.json`.
+If `--route-file` is omitted, the simulator uses a built-in fallback route with three sample points near Vilnius. That fallback is useful for smoke testing, but real parser validation should usually provide an explicit route. This repository includes a small loop at `./tests/fixtures/city-loop.route.json` and reusable road routes at `./routes/krakow-berlin.route.json` and `./routes/munich-rome.route.json`.
 
 Route files use this JSON shape:
 

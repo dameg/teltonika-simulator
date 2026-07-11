@@ -2,6 +2,7 @@ import { Inject, Injectable } from "@nestjs/common";
 import { randomUUID } from "node:crypto";
 
 import { runLiveSession } from "../../live-session";
+import type { AvlRecord } from "../../domain";
 import {
   DashboardDomainError,
   normalizeImei,
@@ -16,6 +17,7 @@ import {
 import {
   InMemoryDashboardDeviceRepository,
   InMemoryDashboardLogRepository,
+  InMemoryDashboardPositionRepository,
   InMemoryDashboardRuntimeRepository,
 } from "../repositories";
 
@@ -46,6 +48,7 @@ class ActiveRunConflictError extends Error {
 @Injectable()
 export class RuntimeService {
   private readonly activeRuns = new Map<string, ActiveRunState>();
+  private readonly acceptedPayloads = new Map<string, unknown>();
 
   constructor(
     @Inject(InMemoryDashboardDeviceRepository)
@@ -54,6 +57,8 @@ export class RuntimeService {
     private readonly runtimeRepository: InMemoryDashboardRuntimeRepository,
     @Inject(InMemoryDashboardLogRepository)
     private readonly logRepository: InMemoryDashboardLogRepository,
+    @Inject(InMemoryDashboardPositionRepository)
+    private readonly positionRepository: InMemoryDashboardPositionRepository,
   ) {}
 
   startDevice(imei: string): RuntimeActionResult {
@@ -160,6 +165,14 @@ export class RuntimeService {
         ...device.config,
         imei: normalizedImei,
         signal,
+        onRecordAccepted: (record, packetHex) => {
+          this.recordPosition(normalizedImei, record);
+          this.acceptedPayloads.set(normalizedImei, jsonSafe({
+            protocol: "codec8e",
+            rawHex: packetHex,
+            record,
+          }));
+        },
         logger: {
           info: (message) => this.handleLiveSessionLog(normalizedImei, runId, message),
           error: (message) =>
@@ -353,7 +366,9 @@ export class RuntimeService {
         type: "avlPacketSent",
         message,
         timestampMs,
+        data: this.acceptedPayloads.get(imei),
       });
+      this.acceptedPayloads.delete(imei);
 
       const ackMatch = /ack=(\d+)/.exec(message);
       if (ackMatch) {
@@ -397,6 +412,19 @@ export class RuntimeService {
     return device;
   }
 
+  private recordPosition(imei: string, record: AvlRecord): void {
+    this.positionRepository.append({
+      imei,
+      timestampMs: record.timestampMs,
+      latitude: record.gps.latitude / 10_000_000,
+      longitude: record.gps.longitude / 10_000_000,
+      altitudeMeters: record.gps.altitudeMeters,
+      headingDegrees: record.gps.headingDegrees,
+      speedKph: record.gps.speedKph,
+      satellites: record.gps.satellites,
+    });
+  }
+
   private appendLog(event: Omit<DashboardLogEvent, "id">): DashboardLogEvent {
     return this.logRepository.append({
       id: randomUUID(),
@@ -407,4 +435,8 @@ export class RuntimeService {
 
 function isAbortError(error: unknown): boolean {
   return error instanceof Error && error.name === "AbortError";
+}
+
+function jsonSafe(value: unknown): unknown {
+  return JSON.parse(JSON.stringify(value, (_key, item) => typeof item === "bigint" ? item.toString() : item));
 }

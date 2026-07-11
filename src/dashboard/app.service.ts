@@ -35,6 +35,7 @@ export class AppService {
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Teltonika Device Control Dashboard</title>
+    <link rel="stylesheet" href="/dashboard-app.css">
   </head>
   <body>
     <div id="root">Loading dashboard shell...</div>

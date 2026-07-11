@@ -39,6 +39,7 @@ describe("end-to-end parser-visible coverage", () => {
       target: ["es2020"],
       jsx: "automatic",
       sourcemap: false,
+      loader: { ".png": "dataurl" },
       logLevel: "silent"
     });
 

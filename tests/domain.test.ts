@@ -54,6 +54,7 @@ describe("domain models", () => {
       movement: true,
       externalVoltageMv: 13_800,
       batteryVoltageMv: 4_100,
+      tripDistanceMeters: 1_234,
       events: [{ type: "harshAcceleration", timestampMs: 1_700_000_000_000 }]
     } satisfies VehicleState;
 

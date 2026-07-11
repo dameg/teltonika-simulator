@@ -56,7 +56,10 @@ describe("AVL packet session behavior", () => {
 
     expect(recorded).toEqual(expectedPacket);
     expect(fixture.avlFrames).toEqual([expectedPacket]);
-    expect(result).toEqual({ acceptedRecordCount: 1 });
+    expect(result).toEqual({
+      acceptedRecordCount: 1,
+      packetHex: expectedPacket.toString("hex"),
+    });
     expect(handshake.socket.destroyed).toBe(false);
   });
 

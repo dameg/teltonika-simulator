@@ -41,6 +41,16 @@ export class StatusController {
     return this.statusService.getOverview();
   }
 
+  @Get("positions")
+  listPositions() {
+    return { positions: this.statusService.listPositions() };
+  }
+
+  @Get("positions/:imei")
+  listDevicePositions(@Param("imei") imei: string) {
+    return { positions: this.statusService.listPositions(imei) };
+  }
+
   @Delete("state")
   @HttpCode(204)
   clearDashboardState() {

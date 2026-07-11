@@ -40,7 +40,7 @@ export type DashboardDeviceConfig = Pick<
   | "seed"
   | "deviceProfile"
   | "packetCount"
->;
+> & { simulationSpeed?: number };
 
 export interface DashboardDeviceRecord {
   imei: string;
@@ -66,6 +66,17 @@ export interface DashboardRunOverview {
   counts: Record<DashboardRunStatus, number>;
 }
 
+export interface DashboardPosition {
+  imei: string;
+  timestampMs: number;
+  latitude: number;
+  longitude: number;
+  altitudeMeters: number;
+  headingDegrees: number;
+  speedKph: number;
+  satellites: number;
+}
+
 export type DashboardLogContextValue = boolean | number | string | null;
 
 export interface DashboardLogEvent {
@@ -76,6 +87,7 @@ export interface DashboardLogEvent {
   message: string;
   timestampMs: number;
   context?: Record<string, DashboardLogContextValue>;
+  data?: unknown;
 }
 
 export type DashboardDomainErrorCode =

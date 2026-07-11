@@ -9,6 +9,7 @@ import {
 import {
   InMemoryDashboardDeviceRepository,
   InMemoryDashboardLogRepository,
+  InMemoryDashboardPositionRepository,
   InMemoryDashboardRuntimeRepository,
 } from "../repositories";
 
@@ -39,6 +40,8 @@ export class StatusService {
     private readonly runtimeRepository: InMemoryDashboardRuntimeRepository,
     @Inject(InMemoryDashboardLogRepository)
     private readonly logRepository: InMemoryDashboardLogRepository,
+    @Inject(InMemoryDashboardPositionRepository)
+    private readonly positionRepository: InMemoryDashboardPositionRepository,
   ) {}
 
   listDeviceStatuses(): DashboardDeviceStatus[] {
@@ -83,6 +86,10 @@ export class StatusService {
     };
   }
 
+  listPositions(imei?: string) {
+    return this.positionRepository.list(imei);
+  }
+
   clearDashboardState(): void {
     const activeImeis = this.runtimeRepository
       .list()
@@ -96,6 +103,7 @@ export class StatusService {
     this.deviceRepository.clear();
     this.runtimeRepository.clear();
     this.logRepository.clear();
+    this.positionRepository.clear();
   }
 
   private toDeviceStatus(

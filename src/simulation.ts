@@ -35,6 +35,7 @@ export interface DeterministicSimulationContext {
 export interface VehicleSimulatorOptions extends DeterministicSimulationOptions {
   externalVoltageMv?: number;
   batteryVoltageMv?: number;
+  simulationSpeed?: number;
 }
 
 export interface VehicleSimulator {
@@ -104,13 +105,15 @@ export function simulationDeterminismKey(options: DeterministicSimulationOptions
 }
 
 export function createVehicleSimulator(options: VehicleSimulatorOptions): VehicleSimulator {
-  const context = createDeterministicSimulationContext(options);
+  const simulationIntervalMs = Math.max(1, Math.round(options.intervalMs * simulationSpeedMultiplier(options.simulationSpeed ?? 0)));
+  const context = createDeterministicSimulationContext({ ...options, intervalMs: simulationIntervalMs });
   const profile = getDrivingStyleProfile(options.drivingStyle);
   const geometry = buildRouteGeometry(options.route);
   const intervalSeconds = context.clock.intervalMs / 1000;
   const externalVoltageMv = options.externalVoltageMv ?? 13_800;
   const batteryVoltageMv = options.batteryVoltageMv;
   let distanceMeters = 0;
+  let tripDistanceMeters = 0;
   let speedMps = 0;
   let idleUntilMs = 0;
 
@@ -153,7 +156,9 @@ export function createVehicleSimulator(options: VehicleSimulatorOptions): Vehicl
         if (context.random.next() < profile.harshBrakingProbability) {
           events.push({ type: "harshBraking", timestampMs });
         }
-        distanceMeters = nextDistance(geometry, position.segmentIndex, distanceMeters, speedMps * intervalSeconds);
+        const traveledMeters = speedMps * intervalSeconds;
+        distanceMeters = nextDistance(geometry, position.segmentIndex, distanceMeters, traveledMeters);
+        tripDistanceMeters += traveledMeters;
       }
 
       return {
@@ -167,6 +172,7 @@ export function createVehicleSimulator(options: VehicleSimulatorOptions): Vehicl
           hasGpsFix: true
         },
         speedKph: Math.round(mpsToKph(speedMps) * 10) / 10,
+        tripDistanceMeters: Math.round(tripDistanceMeters * 10) / 10,
         accelerationMps2: Math.round(accelerationMps2 * 100) / 100,
         brakingMps2: Math.round(brakingMps2 * 100) / 100,
         isStopped: speedMps < 0.1,
@@ -179,6 +185,13 @@ export function createVehicleSimulator(options: VehicleSimulatorOptions): Vehicl
       };
     }
   };
+}
+
+export function simulationSpeedMultiplier(value: number): number {
+  if (!Number.isInteger(value) || value < -10 || value > 10) {
+    throw new RangeError("simulationSpeed must be an integer between -10 and 10");
+  }
+  return value < 0 ? 1 / Math.abs(value) : value || 1;
 }
 
 function hashSeed(seed: number | string): number {

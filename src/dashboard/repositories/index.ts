@@ -8,3 +8,4 @@ export {
   type DashboardLogQuery,
 } from "./log-repository";
 export { InMemoryDashboardRuntimeRepository } from "./runtime-repository";
+export { InMemoryDashboardPositionRepository } from "./position-repository";

@@ -14,6 +14,7 @@ describe("dashboard app shell", () => {
       platform: "browser",
       format: "iife",
       outfile: "dist/dashboard/frontend/dashboard-app.js",
+      loader: { ".png": "dataurl" },
     });
 
     server = await startDashboardServer({ host: "127.0.0.1", port: 0 });
@@ -34,6 +35,7 @@ describe("dashboard app shell", () => {
     expect(shell).toContain("Teltonika Device Control Dashboard");
     expect(shell).toContain('<div id="root">Loading dashboard shell...</div>');
     expect(shell).toContain('<script defer src="/dashboard-app.js"></script>');
+    expect(shell).toContain('<link rel="stylesheet" href="/dashboard-app.css">');
 
     const frontendResponse = await fetch(`${baseUrl}/dashboard-app.js`);
 
@@ -42,9 +44,17 @@ describe("dashboard app shell", () => {
     const frontendBundle = await frontendResponse.text();
     expect(frontendBundle).toContain("Teltonika Device Control");
     expect(frontendBundle).toContain("Device setup");
+    expect(frontendBundle).toContain("FMC650 test device");
+    expect(frontendBundle).toContain("Generate IMEI");
     expect(frontendBundle).toContain("Bulk import IMEIs");
     expect(frontendBundle).toContain("Start all enabled");
     expect(frontendBundle).toContain("Recent logs");
+    expect(frontendBundle).toContain("JSON package");
+    expect(frontendBundle).toContain("Device map");
+    expect(frontendBundle).toContain("Predefined route");
+    expect(frontendBundle).toContain("Simulation speed");
+    expect(frontendBundle).toContain("routes/krakow-berlin.route.json");
+    expect(frontendBundle).toContain("routes/munich-rome.route.json");
     expect(frontendBundle).toContain("Polling every second");
     expect(frontendBundle).toContain("Clear logs");
     expect(frontendBundle).toContain("Clear dashboard state");
@@ -52,6 +62,7 @@ describe("dashboard app shell", () => {
     expect(frontendBundle).toContain("/api/status/overview");
     expect(frontendBundle).toContain("/api/logs?limit=100");
     expect(frontendBundle).toContain("/api/status/state");
+    expect(frontendBundle).toContain("/api/status/positions");
 
     const healthResponse = await fetch(`${baseUrl}/api/health`);
 

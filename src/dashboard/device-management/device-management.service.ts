@@ -12,6 +12,7 @@ import {
 import {
   InMemoryDashboardDeviceRepository,
   InMemoryDashboardLogRepository,
+  InMemoryDashboardPositionRepository,
   InMemoryDashboardRuntimeRepository,
   type CreateDashboardDeviceInput,
   type UpdateDashboardDeviceInput
@@ -23,6 +24,7 @@ const defaultImportedConfig: DashboardDeviceConfig = {
   host: "127.0.0.1",
   port: 5027,
   intervalMs: 1000,
+  simulationSpeed: 0,
   reconnectDelayMs: 3000,
   routeFile: undefined,
   drivingStyle: "normal",
@@ -35,6 +37,7 @@ type DeviceConfigInput = {
   host: unknown;
   port: unknown;
   intervalMs: unknown;
+  simulationSpeed?: unknown;
   reconnectDelayMs: unknown;
   routeFile?: unknown;
   drivingStyle: unknown;
@@ -61,7 +64,9 @@ export class DeviceManagementService {
     @Inject(InMemoryDashboardRuntimeRepository)
     private readonly runtimeRepository: InMemoryDashboardRuntimeRepository,
     @Inject(InMemoryDashboardLogRepository)
-    private readonly logRepository: InMemoryDashboardLogRepository
+    private readonly logRepository: InMemoryDashboardLogRepository,
+    @Inject(InMemoryDashboardPositionRepository)
+    private readonly positionRepository: InMemoryDashboardPositionRepository,
   ) {}
 
   listDevices(): DashboardDeviceRecord[] {
@@ -101,6 +106,7 @@ export class DeviceManagementService {
     this.deviceRepository.delete(normalizedImei);
     this.logRepository.clearByDevice(normalizedImei);
     this.runtimeRepository.delete(normalizedImei);
+    this.positionRepository.clearByDevice(normalizedImei);
   }
 
   bulkImport(payload: Record<string, unknown>): DashboardDeviceRecord[] {
@@ -179,6 +185,7 @@ export class DeviceManagementService {
       host: this.parseRequiredString(input.host, "config.host"),
       port: this.parseInteger(input.port, "config.port", 1, 65_535),
       intervalMs: this.parseInteger(input.intervalMs, "config.intervalMs", 1),
+      simulationSpeed: this.parseInteger(input.simulationSpeed ?? 0, "config.simulationSpeed", -10, 10),
       reconnectDelayMs: this.parseInteger(
         input.reconnectDelayMs,
         "config.reconnectDelayMs",

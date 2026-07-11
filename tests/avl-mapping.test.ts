@@ -1,7 +1,13 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
-import { defaultCodec8ExtendedDeviceProfile, mapVehicleStateToAvlRecord } from "../src";
+import {
+  decodeCodec8ExtendedPacket,
+  defaultCodec8ExtendedDeviceProfile,
+  encodeCodec8ExtendedPacket,
+  fmc650FmsDeviceProfile,
+  mapVehicleStateToAvlRecord
+} from "../src";
 import type { VehicleState } from "../src";
 
 const baseState = {
@@ -23,6 +29,7 @@ const baseState = {
   movement: true,
   externalVoltageMv: 13_800,
   batteryVoltageMv: 4_100,
+  tripDistanceMeters: 1_234.5,
   events: []
 } satisfies VehicleState;
 
@@ -95,6 +102,44 @@ describe("vehicle-state to AVL mapping", () => {
     expect(mapVehicleStateToAvlRecord(baseState, defaultCodec8ExtendedDeviceProfile)).toEqual(
       mapVehicleStateToAvlRecord(baseState, defaultCodec8ExtendedDeviceProfile)
     );
+  });
+
+  it("maps FMC650 FMS telemetry using vendor-defined AVL element sizes", () => {
+    const record = mapVehicleStateToAvlRecord(baseState, fmc650FmsDeviceProfile);
+
+    expect(record.io.oneByte).toEqual(
+      expect.arrayContaining([
+        { id: 79, value: 0 },
+        { id: 81, value: 0 },
+        { id: 82, value: 0 },
+        { id: 83, value: 0 },
+        { id: 85, value: 65 }
+      ])
+    );
+    expect(record.io.twoBytes).toEqual(
+      expect.arrayContaining([
+        { id: 89, value: 5_200 },
+        { id: 90, value: 7_800 },
+        { id: 91, value: 7_600 }
+      ])
+    );
+    expect(record.io.fourBytes).toEqual(
+      expect.arrayContaining([
+        { id: 80, value: 42 },
+        { id: 84, value: 51 },
+        { id: 86, value: 25_000 },
+        { id: 87, value: 78 },
+        { id: 88, value: 650 },
+        { id: 192, value: 500_001_234 },
+        { id: 193, value: 1_234 }
+      ])
+    );
+
+    const decoded = decodeCodec8ExtendedPacket(encodeCodec8ExtendedPacket([record]));
+    expect(decoded.ok).toBe(true);
+    if (decoded.ok) {
+      expect(decoded.packet.records[0]?.io).toEqual(record.io);
+    }
   });
 
   it("keeps mapping independent from TCP and binary encoding modules", () => {

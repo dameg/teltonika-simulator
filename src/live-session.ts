@@ -18,13 +18,16 @@ export interface LiveSessionOptions {
   port: number;
   imei: string;
   intervalMs: number;
+  simulationSpeed?: number;
   reconnectDelayMs?: number;
   routeFile?: string;
   drivingStyle: DrivingStyleName;
   seed: number;
   deviceProfile: string;
+  packetCount?: number;
   signal?: AbortSignal;
   logger?: LiveSessionLogger;
+  onRecordAccepted?: (record: AvlRecord, packetHex: string) => void;
 }
 
 export type LiveSessionResult =
@@ -64,10 +67,12 @@ export async function runLiveSession(options: LiveSessionOptions): Promise<LiveS
     seed: options.seed,
     startTimestampMs: 1_700_000_000_000,
     intervalMs: options.intervalMs,
+    simulationSpeed: options.simulationSpeed,
     externalVoltageMv: profile.defaults.externalVoltageMv,
     batteryVoltageMv: profile.defaults.batteryVoltageMv
   });
   let pendingRecord: AvlRecord | null = null;
+  const sessionState = { acceptedRecordCount: 0 };
 
   while (true) {
     throwIfAborted(options.signal);
@@ -79,7 +84,8 @@ export async function runLiveSession(options: LiveSessionOptions): Promise<LiveS
         { ...options, logger },
         simulator,
         profile,
-        pendingRecord
+        pendingRecord,
+        sessionState,
       );
       if (result.kind === "reconnect") {
         pendingRecord = result.pendingRecord;
@@ -107,7 +113,8 @@ async function runConnectionAttempt(
   options: LiveSessionOptions & { logger: LiveSessionLogger },
   simulator: ReturnType<typeof createVehicleSimulator>,
   profile: ReturnType<typeof getDeviceProfile>,
-  pendingRecord: AvlRecord | null
+  pendingRecord: AvlRecord | null,
+  sessionState: { acceptedRecordCount: number },
 ): Promise<ConnectionAttemptResult> {
   let socket: net.Socket | undefined;
   let removeAbortListener = () => {
@@ -149,9 +156,14 @@ async function runConnectionAttempt(
       pendingRecord = record;
       const result = await sendAvlPacket(handshake.socket, [record]);
       pendingRecord = null;
+      sessionState.acceptedRecordCount += result.acceptedRecordCount;
+      options.onRecordAccepted?.(record, result.packetHex);
       options.logger.info(
         `avl sent imei=${options.imei} records=1 timestamp=${record.timestampMs} ack=${result.acceptedRecordCount}`
       );
+      if (options.packetCount !== undefined && sessionState.acceptedRecordCount >= options.packetCount) {
+        return { kind: "completed" };
+      }
 
       await delayWithAbort(options.intervalMs, options.signal);
     }
