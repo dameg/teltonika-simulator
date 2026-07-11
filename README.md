@@ -1,229 +1,315 @@
 # Teltonika GPS Device Simulator
 
-This project simulates one or more Teltonika TCP devices speaking Codec 8 Extended (`codec8e`) to a parser-visible server. It models a virtual vehicle moving along a route and then encodes those simulated AVL records into Teltonika packets.
+A deterministic, multi-device Teltonika simulator with a local control dashboard, live OpenStreetMap tracking, reusable European road routes, and FMC650 FMS/J1939 telemetry.
 
-## MVP Scope
+The simulator models a virtual vehicle first, maps its state to Teltonika AVL elements, encodes Codec 8 Extended packets, and sends them to an external TCP parser.
 
-The simulator currently supports:
+## Highlights
 
-- Teltonika TCP sessions only
-- Codec 8 Extended only
-- One or more IMEIs in a single process
-- Deterministic route-based vehicle simulation
-- Dry-run packet generation for inspection
+- Teltonika IMEI handshake over TCP
+- Codec 8 Extended (`0x8E`) encoding and decoding
+- CRC-16/IBM and AVL acknowledgement validation
+- deterministic vehicle simulation driven by route, style, seed, and interval
+- `eco`, `normal`, and `aggressive` driving profiles
+- Teltonika FMC650 FMS/J1939 profile
+- multiple independent devices and reconnect handling
+- React dashboard for configuration and runtime control
+- live OpenStreetMap positions and multi-device tracks
+- expandable JSON and raw hexadecimal packet previews
+- reusable Kraków–Berlin and Munich–Rome road routes
+- CLI and dry-run packet generation
 
-The simulator does not currently support:
-
-- UDP transport
-- TLS
-- Web dashboard or browser UI
-- Cloud deployment automation
-- Historical trip database storage
-- Server-to-device command/response simulation
-- Additional codecs beyond Codec 8 Extended
-
-The `references/` directory contains read-only external protocol and parser evidence. It is not part of the editable implementation surface for normal task work.
-
-## Install And Verify
+## Quick Start
 
 ```bash
 npm install
 npm run build
-npm run typecheck
-npm test
+npm run dashboard
 ```
 
-To inspect the CLI directly:
+Open:
+
+```text
+http://localhost:3000
+```
+
+The dashboard controls simulator devices, but the target TCP parser must run separately at the host and port configured for each device. The default parser address is `127.0.0.1:5027`.
+
+## Dashboard
+
+The dashboard supports:
+
+- creating, editing, and deleting devices;
+- generating a random 15-digit IMEI;
+- bulk IMEI import;
+- selecting predefined routes and device profiles;
+- configuring parser address, packet interval, retry delay, packet limit, seed, and driving style;
+- scaling simulation time from `0.1×` to `10×`;
+- starting one device, selected devices, or all enabled devices;
+- stopping sessions and monitoring lifecycle status;
+- viewing multiple live device tracks in different colors;
+- filtering logs and inspecting sent packets as JSON and `rawHex`.
+
+Default form values:
+
+| Setting | Default |
+|---|---|
+| Parser | `127.0.0.1:5027` |
+| Packet interval | `1000 ms` |
+| Reconnect delay | `3000 ms` |
+| Route | Kraków → Berlin |
+| Device profile | `fmc650-fms` |
+| Driving style | `normal` |
+| Seed | `1` |
+| Simulation speed | `0` — real time |
+| Packet limit | `1000` |
+
+Dashboard devices, runtime state, logs, and position history are stored in process memory and are cleared when the application restarts.
+
+## How It Works
+
+```text
+route + driving style + seed + simulation speed
+                       |
+                       v
+           vehicle simulation engine
+                       |
+                       v
+             device profile mapping
+                       |
+                       v
+                  AVL record
+                       |
+                       v
+          Codec 8E + CRC + TCP frame
+                       |
+                       v
+             external parser + ACK
+                       |
+                       v
+              dashboard logs and map
+```
+
+Simulation, device mapping, protocol encoding, networking, and dashboard storage remain separate modules.
+
+## Vehicle Simulation
+
+The engine generates:
+
+- interpolated GPS position and heading;
+- speed, acceleration, and braking;
+- ignition and movement state;
+- stops and idling;
+- harsh acceleration and braking events;
+- trip distance and total odometer progression;
+- voltage and FMC650 vehicle telemetry.
+
+### Driving Styles
+
+- `eco` — gentler acceleration and less aggressive behavior
+- `normal` — balanced default behavior
+- `aggressive` — faster acceleration, more variation, and more harsh events
+
+### Seed
+
+The seed controls deterministic pseudo-random behavior such as speed variation, idling, and driving events.
+
+The same route, driving style, seed, and interval produce the same telemetry sequence. Changing only the seed creates another repeatable variation of the same trip.
+
+### Simulation Speed
+
+The dashboard slider accepts values from `-10` to `10`:
+
+- `-10` means `0.1×` real time;
+- `0` means `1×`;
+- `10` means `10×`.
+
+The transmission cadence remains unchanged. The simulation clock and physics step are scaled together, keeping position, mileage, speed, and timestamps consistent.
+
+## Teltonika FMC650
+
+Select the `fmc650-fms` profile to generate FMS/J1939 data using FMC650 AVL identifiers published by Teltonika.
+
+Included telemetry:
+
+- brake switch;
+- wheel-based speed;
+- cruise control;
+- clutch switch;
+- PTO state;
+- accelerator pedal position;
+- engine load;
+- total fuel used;
+- fuel level;
+- engine RPM;
+- axle weights;
+- total odometer and trip distance.
+
+The profile enforces the FMC650-defined 1-, 2-, and 4-byte element sizes even when the current value would fit in a smaller field.
+
+## Predefined Routes
+
+| Route | File | Distance | GPS points |
+|---|---|---:|---:|
+| Small city loop | `tests/fixtures/city-loop.route.json` | local | 3 |
+| Kraków → Berlin | `routes/krakow-berlin.route.json` | 605.6 km | 1,383 |
+| Munich → Rome | `routes/munich-rome.route.json` | 915.7 km | 2,206 |
+
+The long routes were generated from OSRM/OpenStreetMap road geometry. Every fifth source geometry point was retained, keeping the calculated distance error below `0.3%`. Segment speeds are derived from OSRM annotations.
+
+Routes currently loop from the last point back to the first point.
+
+### Route File Format
+
+```json
+{
+  "metadata": {
+    "id": "example-route",
+    "name": "Example route",
+    "description": "Reusable simulator route"
+  },
+  "points": [
+    {
+      "latitude": 50.049649,
+      "longitude": 19.944352,
+      "altitudeMeters": 220,
+      "speedLimitKph": 50
+    },
+    {
+      "latitude": 50.0501,
+      "longitude": 19.9435,
+      "speedLimitKph": 30,
+      "stopDurationMs": 10000
+    }
+  ]
+}
+```
+
+Required fields:
+
+- `metadata.id`;
+- a non-empty `points` array;
+- `latitude` and `longitude` for every point.
+
+Optional point fields:
+
+- `altitudeMeters`;
+- `speedLimitKph`;
+- `stopDurationMs`.
+
+## CLI
+
+Build the project before running the compiled CLI:
 
 ```bash
-npm run cli -- --help
+npm run build
 ```
 
-## CLI Usage
-
-Basic live session:
-
-```bash
-npm run cli -- --host 127.0.0.1 --port 5000 --imei 356307042441013
-```
-
-CLI options:
-
-- `--host <host>` parser/server host, required
-- `--port <port>` parser/server TCP port, required
-- `--imei <imei>` device IMEI, repeatable or comma-separated, at least one required
-- `--interval-ms <ms>` telemetry send interval, default `1000`
-- `--reconnect-delay-ms <ms>` retry delay after reconnectable transport failures, default `5000`
-- `--route-file <path>` route JSON file
-- `--driving-style <eco|normal|aggressive>` driving profile, default `normal`
-- `--seed <integer>` deterministic simulation seed, default `1`
-- `--device-profile <name>` device profile, currently `default-codec8e`
-- `--dry-run` generate packets without opening a TCP connection
-- `--count <n>` or `--packet-count <n>` packet count limit, mainly for dry-run
-- `--help` print usage
-
-Environment variables:
-
-- `TELTONIKA_HOST`
-- `TELTONIKA_PORT`
-- `TELTONIKA_IMEIS`
-- `TELTONIKA_INTERVAL_MS`
-- `TELTONIKA_RECONNECT_DELAY_MS`
-- `TELTONIKA_ROUTE_FILE`
-- `TELTONIKA_DRIVING_STYLE`
-- `TELTONIKA_SEED`
-- `TELTONIKA_DEVICE_PROFILE`
-- `TELTONIKA_DRY_RUN`
-- `TELTONIKA_PACKET_COUNT`
-
-CLI flags override environment variables when both are provided.
-
-Environment-based example:
-
-```bash
-export TELTONIKA_HOST=127.0.0.1
-export TELTONIKA_PORT=5000
-export TELTONIKA_IMEIS=356307042441013
-npm run cli --
-```
-
-## Single And Multi-Device Runs
-
-Single IMEI:
-
-```bash
-npm run cli -- --host 127.0.0.1 --port 5000 --imei 356307042441013
-```
-
-Multiple IMEIs with repeated flags:
+Single device:
 
 ```bash
 npm run cli -- \
   --host 127.0.0.1 \
-  --port 5000 \
+  --port 5027 \
+  --imei 356307042441013 \
+  --route-file routes/krakow-berlin.route.json \
+  --device-profile fmc650-fms
+```
+
+Multiple devices:
+
+```bash
+npm run cli -- \
+  --host 127.0.0.1 \
+  --port 5027 \
   --imei 356307042441013 \
   --imei 356307042441014
 ```
 
-Multiple IMEIs with a comma-separated value:
+IMEIs may also be comma-separated. Each IMEI receives an independent session and a deterministic per-device seed.
 
-```bash
-npm run cli -- \
-  --host 127.0.0.1 \
-  --port 5000 \
-  --imei 356307042441013,356307042441014
-```
+### CLI Options
 
-Each IMEI gets its own live session. Multi-device runs stay deterministic by deriving a distinct per-device seed from the base seed and IMEI.
+| Option | Description |
+|---|---|
+| `--host <host>` | Parser host |
+| `--port <port>` | Parser TCP port |
+| `--imei <imei>` | Repeatable or comma-separated IMEI |
+| `--interval-ms <ms>` | Packet interval, default `1000` |
+| `--reconnect-delay-ms <ms>` | Retry delay after transport errors |
+| `--route-file <path>` | Route JSON file |
+| `--driving-style <name>` | `eco`, `normal`, or `aggressive` |
+| `--seed <integer>` | Deterministic simulation seed |
+| `--device-profile <name>` | `default-codec8e` or `fmc650-fms` |
+| `--count <n>` | Packet limit |
+| `--dry-run` | Generate packets without TCP |
+| `--help` | Display CLI help |
 
-## Route Files
-
-If `--route-file` is omitted, the simulator uses a built-in fallback route with three sample points near Vilnius. That fallback is useful for smoke testing, but real parser validation should usually provide an explicit route. This repository includes a small loop at `./tests/fixtures/city-loop.route.json` and reusable road routes at `./routes/krakow-berlin.route.json` and `./routes/munich-rome.route.json`.
-
-Route files use this JSON shape:
-
-```json
-{
-  "route": {
-    "metadata": {
-      "id": "vilnius-loop",
-      "name": "Vilnius Loop",
-      "description": "Simple parser-visible loop for local testing"
-    },
-    "points": [
-      {
-        "latitude": 54.6872,
-        "longitude": 25.2797,
-        "altitudeMeters": 112,
-        "speedLimitKph": 50
-      },
-      {
-        "latitude": 54.6895,
-        "longitude": 25.2758,
-        "speedLimitKph": 40,
-        "stopDurationMs": 10000
-      },
-      {
-        "latitude": 54.6841,
-        "longitude": 25.2829,
-        "altitudeMeters": 118,
-        "speedLimitKph": 60
-      }
-    ]
-  }
-}
-```
-
-Rules:
-
-- `route.metadata.id` and `route.metadata.name` are required
-- `route.points` must be a non-empty array
-- each point requires `latitude` and `longitude`
-- optional point fields are `altitudeMeters`, `speedLimitKph`, and `stopDurationMs`
-
-The simulator loops from the last point back to the first point, so routes behave as continuous loops instead of one-shot trips.
-
-## Vehicle Simulation
-
-This is a virtual vehicle simulator, not only a packet generator. Route geometry, interpolation, speed changes, stopping, idling, heading, and movement state are simulated first, then mapped into Teltonika AVL records.
-
-`--interval-ms` controls the simulation step and packet send cadence. A route, driving style, interval, and seed combination produces deterministic output.
-
-Driving styles:
-
-- `eco` lower acceleration and gentler behavior
-- `normal` balanced default behavior
-- `aggressive` faster acceleration, more variation, and harsher events
-
-Seeded live example:
-
-```bash
-npm run cli -- \
-  --host 127.0.0.1 \
-  --port 5000 \
-  --imei 356307042441013 \
-  --route-file ./tests/fixtures/city-loop.route.json \
-  --driving-style aggressive \
-  --seed 42 \
-  --interval-ms 1000
-```
-
-Identical inputs produce identical telemetry sequences. Changing the seed changes the simulated behavior while preserving the same route definition.
+CLI flags override their corresponding environment variables.
 
 ## Dry Run
 
-Dry-run mode generates Teltonika packets without opening a TCP connection:
+Dry-run mode generates packets without opening a network connection:
 
 ```bash
 npm run cli -- \
   --host 127.0.0.1 \
-  --port 5000 \
+  --port 5027 \
   --imei 356307042441013 \
-  --route-file ./tests/fixtures/city-loop.route.json \
+  --route-file routes/munich-rome.route.json \
+  --device-profile fmc650-fms \
   --driving-style eco \
-  --seed 7 \
+  --seed 42 \
   --dry-run \
   --count 3
 ```
 
-Behavior:
-
-- packet hex is written to stdout, one packet per line
-- dry-run summary lines are written to stderr
-- route resolution and device-profile resolution match live mode
-- if `--count` is omitted in dry-run mode, one packet is generated by default
-
-Dry-run is useful for fixture generation, parser debugging, and verifying deterministic output for a known route/style/seed combination.
+Packet hex is written to stdout. Dry-run is useful for fixture generation, parser debugging, and deterministic packet comparison.
 
 ## Reconnect Behavior
 
-Live TCP sessions reconnect after reconnectable transport failures such as connection refused, connection reset, timeouts, and similar socket-level failures. The retry delay is controlled by `--reconnect-delay-ms`.
+Live sessions reconnect after recoverable socket failures such as connection refusal, reset, and timeout. They do not reconnect after:
 
-The simulator does not reconnect after:
+- IMEI rejection;
+- protocol failures such as an AVL acknowledgement count mismatch.
 
-- IMEI rejection during session start
-- non-reconnectable protocol failures such as AVL acknowledgement count mismatch
+## Project Structure
 
-## Device Profile
+| Area | Files |
+|---|---|
+| Domain models | `src/domain.ts` |
+| Routes and geometry | `src/route.ts` |
+| Vehicle simulation | `src/simulation.ts`, `src/driving-style.ts` |
+| Device profiles | `src/device-profile.ts`, `src/avl-mapping.ts` |
+| Codec and CRC | `src/codec8-extended.ts`, `src/codec8-extended-decoder.ts`, `src/codec-crc.ts` |
+| TCP sessions | `src/imei-handshake.ts`, `src/avl-session.ts`, `src/live-session.ts` |
+| Multi-device runtime | `src/multi-device-runtime.ts` |
+| Dashboard API | `src/dashboard/` |
+| React dashboard and map | `src/dashboard/frontend/` |
+| Tests | `tests/` |
 
-The current built-in device profile is `default-codec8e`. The MVP intentionally supports only Codec 8 Extended, so parser validation and fixtures should assume `codec8e` packets.
+## Verification
+
+```bash
+npm run typecheck
+npm run build
+npm test
+```
+
+The test suite covers CRC, Codec 8E round trips, IMEI handshake, acknowledgements, deterministic simulation, route geometry, FMC650 mapping, reconnect behavior, multi-device sessions, dashboard APIs, map track selection, and parser-visible end-to-end flows.
+
+## Current Limitations
+
+- TCP and Codec 8 Extended only;
+- no UDP or TLS;
+- no persistent database for devices, logs, or trips;
+- no server-to-device command simulation;
+- no route generator in the dashboard;
+- routes loop instead of completing at the destination;
+- FMC650 values are simulated from vehicle state rather than read from a physical CAN bus.
+
+## Sources
+
+- [Teltonika FMC650 Data Sending Parameters ID](https://wiki.teltonika-gps.com/view/FMC650_Teltonika_Data_Sending_Parameters_ID)
+- [OSRM Route Service](https://project-osrm.org/docs/v5.24.0/api/#route-service)
+- [OpenStreetMap copyright and attribution](https://www.openstreetmap.org/copyright)
