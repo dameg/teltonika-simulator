@@ -151,7 +151,7 @@ describe("dashboard repositories", () => {
     expect(repository.list()).toEqual([]);
   });
 
-  it("keeps a bounded position history per device", () => {
+  it("keeps the complete position history per device", () => {
     const repository = new InMemoryDashboardPositionRepository();
     const point = {
       imei: "123456789012345",
@@ -168,8 +168,8 @@ describe("dashboard repositories", () => {
       repository.append({ ...point, timestampMs: index });
     }
 
-    expect(repository.list(point.imei)).toHaveLength(1_000);
-    expect(repository.list(point.imei)[0]?.timestampMs).toBe(5);
+    expect(repository.list(point.imei)).toHaveLength(1_005);
+    expect(repository.list(point.imei)[0]?.timestampMs).toBe(0);
     repository.clearByDevice(point.imei);
     expect(repository.list()).toEqual([]);
   });

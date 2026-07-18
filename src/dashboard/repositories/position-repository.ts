@@ -1,7 +1,5 @@
 import { normalizeImei, type DashboardPosition } from "../domain";
 
-const maxPointsPerDevice = 1_000;
-
 export class InMemoryDashboardPositionRepository {
   private readonly positions = new Map<string, DashboardPosition[]>();
 
@@ -11,7 +9,6 @@ export class InMemoryDashboardPositionRepository {
     const next = { ...position, imei };
 
     points.push(next);
-    if (points.length > maxPointsPerDevice) points.splice(0, points.length - maxPointsPerDevice);
     this.positions.set(imei, points);
     return { ...next };
   }
