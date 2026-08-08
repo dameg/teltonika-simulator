@@ -23,9 +23,15 @@ The simulator models a virtual vehicle first, maps its state to Teltonika AVL el
 
 ```bash
 npm install
-npm run build
-npm run dashboard
+npm run dev
 ```
+
+`dev` builds the frontend automatically at startup and watches both
+the dashboard backend and frontend sources. Refresh the browser after a
+frontend change.
+
+For a production-style local run, use `npm run build` followed by
+`npm run dashboard`.
 
 Open:
 
@@ -33,7 +39,7 @@ Open:
 http://localhost:3000
 ```
 
-The dashboard controls simulator devices, but the target TCP parser must run separately at the host and port configured for each device. The default parser address is `127.0.0.1:5027`.
+`npm run dev` also starts a local TCP parser at `127.0.0.1:5027`. Its raw parser view is available at `http://127.0.0.1:3001`.
 
 ## Dashboard
 
@@ -45,7 +51,7 @@ The dashboard supports:
 - selecting predefined routes and device profiles;
 - configuring parser address, packet interval, retry delay, packet limit, seed, and driving style;
 - scaling simulation time from `0.1×` to `10×`;
-- starting one device, selected devices, or all enabled devices;
+- starting one device, selected devices, or every inactive device;
 - stopping sessions and monitoring lifecycle status;
 - viewing multiple live device tracks in different colors;
 - filtering logs and inspecting sent packets as JSON and `rawHex`.

@@ -42,10 +42,10 @@ export class RuntimeController {
     return this.execute(() => this.runtimeService.startSelectedDevices(imeis));
   }
 
-  @Post("start-all-enabled")
+  @Post("start-all")
   @HttpCode(HttpStatus.OK)
-  startAllEnabled() {
-    return this.execute(() => this.runtimeService.startAllEnabledDevices());
+  startAll() {
+    return this.execute(() => this.runtimeService.startAllDevices());
   }
 
   @Post("stop-all")

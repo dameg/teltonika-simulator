@@ -97,7 +97,6 @@ describe("dashboard runtime api", () => {
     await createDevice({
       imei,
       label: "Runtime Device",
-      enabled: true,
       host: backend.tcpAddress.address,
       port: backend.tcpAddress.port,
     });
@@ -162,7 +161,6 @@ describe("dashboard runtime api", () => {
       await createDevice({
         imei,
         label: `Selected ${imei}`,
-        enabled: true,
         host: backend.tcpAddress.address,
         port: backend.tcpAddress.port,
       });
@@ -192,35 +190,47 @@ describe("dashboard runtime api", () => {
     await waitFor(() => imeis.every((imei) => runtimeRepository.get(imei)?.status === "stopped"));
   });
 
-  it("starts all enabled devices and ignores disabled ones", async () => {
+  it("starts every inactive device and skips active devices", async () => {
     const backend = await useBackend();
 
     await createDevice({
       imei: "333333333333333",
-      label: "Enabled",
-      enabled: true,
+      label: "Already running",
       host: backend.tcpAddress.address,
       port: backend.tcpAddress.port,
+      packetCount: 100,
     });
     await createDevice({
       imei: "444444444444444",
-      label: "Disabled",
-      enabled: false,
+      label: "Waiting to start",
       host: backend.tcpAddress.address,
       port: backend.tcpAddress.port,
+      packetCount: 100,
     });
 
-    const response = await fetch(`${server.url}/api/runtime/start-all-enabled`, {
+    const firstStartResponse = await fetch(
+      `${server.url}/api/runtime/devices/333333333333333/start`,
+      { method: "POST" },
+    );
+    expect(firstStartResponse.status).toBe(200);
+    await waitFor(() => runtimeRepository.get("333333333333333")?.status === "running");
+
+    const response = await fetch(`${server.url}/api/runtime/start-all`, {
       method: "POST",
     });
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({
-      results: [{ imei: "333333333333333", status: "started" }],
+      results: [{ imei: "444444444444444", status: "started" }],
     });
 
-    await waitFor(() => runtimeRepository.get("333333333333333")?.status === "running");
-    expect(runtimeRepository.get("444444444444444")).toBeUndefined();
+    await waitFor(() => runtimeRepository.get("444444444444444")?.status === "running");
+
+    const secondResponse = await fetch(`${server.url}/api/runtime/start-all`, {
+      method: "POST",
+    });
+    expect(secondResponse.status).toBe(200);
+    await expect(secondResponse.json()).resolves.toEqual({ results: [] });
   });
 
   it("marks runs as rejected when the server rejects the imei", async () => {
@@ -230,7 +240,6 @@ describe("dashboard runtime api", () => {
     await createDevice({
       imei,
       label: "Rejected Device",
-      enabled: true,
       host: backend.tcpAddress.address,
       port: backend.tcpAddress.port,
     });
@@ -256,7 +265,6 @@ describe("dashboard runtime api", () => {
     await createDevice({
       imei,
       label: "Failure Device",
-      enabled: true,
       host: "127.0.0.1",
       port: address.port,
     });
@@ -278,7 +286,6 @@ describe("dashboard runtime api", () => {
     await createDevice({
       imei,
       label: "Reconnect Device",
-      enabled: true,
       host: backend.tcpAddress.address,
       port: backend.tcpAddress.port,
       packetCount: 10,
@@ -301,7 +308,6 @@ describe("dashboard runtime api", () => {
     await createDevice({
       imei: "888888888888888",
       label: "Configured Device",
-      enabled: true,
       host: "127.0.0.1",
       port: 65001,
     });
@@ -309,7 +315,6 @@ describe("dashboard runtime api", () => {
     await createDevice({
       imei: "999999999999999",
       label: "Failed Device",
-      enabled: false,
       host: "127.0.0.1",
       port: 65002,
     });
@@ -329,13 +334,11 @@ describe("dashboard runtime api", () => {
         {
           imei: "888888888888888",
           label: "Configured Device",
-          enabled: true,
           status: "configured",
         },
         {
           imei: "999999999999999",
           label: "Failed Device",
-          enabled: false,
           status: "failed",
           lastStartAtMs: 1_000,
           lastStopAtMs: 2_000,
@@ -349,21 +352,18 @@ describe("dashboard runtime api", () => {
     await createDevice({
       imei: "101010101010101",
       label: "Configured",
-      enabled: true,
       host: "127.0.0.1",
       port: 65003,
     });
     await createDevice({
       imei: "202020202020202",
       label: "Failed",
-      enabled: true,
       host: "127.0.0.1",
       port: 65004,
     });
     await createDevice({
       imei: "303030303030303",
       label: "Stopped",
-      enabled: false,
       host: "127.0.0.1",
       port: 65005,
     });
@@ -402,7 +402,6 @@ describe("dashboard runtime api", () => {
     await createDevice({
       imei: "121212121212121",
       label: "Configured Device",
-      enabled: true,
       host: "127.0.0.1",
       port: 65011,
     });
@@ -431,7 +430,6 @@ describe("dashboard runtime api", () => {
         {
           imei: "121212121212121",
           label: "Configured Device",
-          enabled: true,
           status: "failed",
           updatedAtMs: 2_000,
           lastStartAtMs: 1_000,
@@ -462,7 +460,6 @@ describe("dashboard runtime api", () => {
     await createDevice({
       imei: "404040404040404",
       label: "Detail Device",
-      enabled: true,
       host: "127.0.0.1",
       port: 65006,
     });
@@ -480,7 +477,6 @@ describe("dashboard runtime api", () => {
       device: {
         imei: "404040404040404",
         label: "Detail Device",
-        enabled: true,
         status: "completed",
         updatedAtMs: 9_000,
         lastStartAtMs: 8_000,
@@ -493,7 +489,6 @@ describe("dashboard runtime api", () => {
     await createDevice({
       imei: "505050505050505",
       label: "Log Device",
-      enabled: true,
       host: "127.0.0.1",
       port: 65007,
     });
@@ -552,14 +547,12 @@ describe("dashboard runtime api", () => {
     await createDevice({
       imei: "606060606060606",
       label: "Clear Logs Device",
-      enabled: true,
       host: "127.0.0.1",
       port: 65008,
     });
     await createDevice({
       imei: "707070707070707",
       label: "Keep Logs Device",
-      enabled: true,
       host: "127.0.0.1",
       port: 65009,
     });
@@ -598,7 +591,6 @@ describe("dashboard runtime api", () => {
     await createDevice({
       imei: "808080808080808",
       label: "Clear State Device",
-      enabled: true,
       host: "127.0.0.1",
       port: 65010,
     });
@@ -631,7 +623,6 @@ describe("dashboard runtime api", () => {
     await createDevice({
       imei,
       label: "Active State Device",
-      enabled: true,
       host: backend.tcpAddress.address,
       port: backend.tcpAddress.port,
       packetCount: 6,
@@ -712,7 +703,6 @@ describe("dashboard runtime api", () => {
 async function createDevice(input: {
   imei: string;
   label: string;
-  enabled: boolean;
   host: string;
   port: number;
   packetCount?: number;
@@ -723,7 +713,6 @@ async function createDevice(input: {
       body: JSON.stringify({
         imei: input.imei,
         label: input.label,
-        enabled: input.enabled,
         config: {
           host: input.host,
           port: input.port,

@@ -46,8 +46,7 @@ describe("dashboard app shell", () => {
     expect(frontendBundle).toContain("Device setup");
     expect(frontendBundle).toContain("FMC650 test device");
     expect(frontendBundle).toContain("Generate IMEI");
-    expect(frontendBundle).toContain("Bulk import IMEIs");
-    expect(frontendBundle).toContain("Start all enabled");
+    expect(frontendBundle).toContain("Start all");
     expect(frontendBundle).toContain("Recent logs");
     expect(frontendBundle).toContain("JSON package");
     expect(frontendBundle).toContain("Device map");

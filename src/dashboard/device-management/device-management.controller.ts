@@ -40,15 +40,6 @@ export class DeviceManagementController {
     }
   }
 
-  @Post("import")
-  bulkImport(@Body() body: unknown) {
-    try {
-      return { devices: this.deviceManagementService.bulkImport(asRecord(body)) };
-    } catch (error) {
-      throw toHttpException(error);
-    }
-  }
-
   @Patch(":imei")
   updateDevice(@Param("imei") imei: string, @Body() body: unknown) {
     try {

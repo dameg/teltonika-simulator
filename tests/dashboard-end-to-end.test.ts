@@ -97,28 +97,20 @@ describe("dashboard end-to-end coverage", () => {
     expect((await logs(imei)).events.map((event) => event.type)).toContain("runStopped");
   });
 
-  it("bulk-imports and runs two devices concurrently, then clears visible state", async () => {
+  it("runs two devices concurrently, then clears visible state", async () => {
     parser = await startTeltonikaParserFixture();
     server = await startDashboardServer({ host: "127.0.0.1", port: 0 });
     const imeis = ["111111111111111", "222222222222222"];
 
-    const importResponse = await fetch(`${server.url}/api/devices/import`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        imeis: imeis.join("\n"),
-        config: deviceConfig(),
-      }),
-    });
-    expect(importResponse.status).toBe(201);
     await Promise.all(
-      imeis.map((imei) =>
-        fetch(`${server!.url}/api/devices/${imei}`, {
-          method: "PATCH",
+      imeis.map(async (imei, index) => {
+        const response = await fetch(`${server!.url}/api/devices`, {
+          method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ config: deviceConfig() }),
-        }),
-      ),
+          body: JSON.stringify({ imei, label: `Device ${index + 1}`, config: deviceConfig() }),
+        });
+        expect(response.status).toBe(201);
+      }),
     );
 
     const startResponse = await fetch(`${server.url}/api/runtime/start-selected`, {
@@ -180,7 +172,7 @@ describe("dashboard end-to-end coverage", () => {
     return fetch(`${server?.url}/api/devices`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ imei, label, enabled: true, config: deviceConfig() }),
+      body: JSON.stringify({ imei, label, config: deviceConfig() }),
     });
   }
 

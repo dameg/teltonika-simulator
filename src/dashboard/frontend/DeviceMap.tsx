@@ -92,10 +92,10 @@ export function DeviceMap({ devices, positions, selectedImei }: DeviceMapProps):
   }, [devices, positions, selectedImei, trackImeis, trackKey]);
 
   return (
-    <div>
-      <div ref={containerRef} aria-label="Device positions map" style={{ height: 480, borderRadius: 10 }} />
-      {positions.length === 0 && <p style={{ color: "#667d78" }}>Waiting for acknowledged GPS data…</p>}
-      {routePointCount > 0 && <p style={{ color: "#667d78" }}>{selectedImei ? "Route" : "Routes"}: {routePointCount} acknowledged GPS points.</p>}
+    <div className="map-widget">
+      <div ref={containerRef} className="map-canvas" aria-label="Device positions map" />
+      {positions.length === 0 && <p className="map-caption">Waiting for acknowledged GPS data…</p>}
+      {routePointCount > 0 && <p className="map-caption">{selectedImei ? "Route" : "Routes"}: {routePointCount} acknowledged GPS points.</p>}
     </div>
   );
 }

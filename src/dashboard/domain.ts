@@ -45,7 +45,6 @@ export type DashboardDeviceConfig = Pick<
 export interface DashboardDeviceRecord {
   imei: string;
   label: string;
-  enabled: boolean;
   config: DashboardDeviceConfig;
   createdAtMs: number;
   updatedAtMs: number;

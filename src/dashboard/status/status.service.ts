@@ -16,7 +16,6 @@ import {
 export interface DashboardDeviceStatus {
   imei: string;
   label: string;
-  enabled: boolean;
   status: DashboardRunStatus;
   updatedAtMs: number;
   lastStartAtMs?: number;
@@ -113,7 +112,6 @@ export class StatusService {
     return {
       imei: device.imei,
       label: device.label,
-      enabled: device.enabled,
       status: runtime?.status ?? "configured",
       updatedAtMs: runtime?.updatedAtMs ?? device.updatedAtMs,
       lastStartAtMs: runtime?.lastStartAtMs,

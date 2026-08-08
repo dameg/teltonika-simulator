@@ -135,10 +135,10 @@ export class RuntimeService {
     };
   }
 
-  startAllEnabledDevices(): RuntimeBatchResult {
+  startAllDevices(): RuntimeBatchResult {
     const results = this.deviceRepository
       .list()
-      .filter((device) => device.enabled)
+      .filter((device) => !this.activeRuns.has(device.imei))
       .map((device) => this.startDevice(device.imei));
 
     return { results };

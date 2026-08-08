@@ -65,7 +65,6 @@ describe("end-to-end parser-visible coverage", () => {
       body: JSON.stringify({
         imei,
         label: "Parser Coverage Device",
-        enabled: true,
         config: {
           host: backend.tcpAddress.address,
           port: backend.tcpAddress.port,

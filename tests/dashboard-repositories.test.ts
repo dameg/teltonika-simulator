@@ -14,7 +14,6 @@ function createDeviceInput(imei: string) {
   return {
     imei,
     label: `Device ${imei.slice(-4)}`,
-    enabled: true,
     config: {
       host: "127.0.0.1",
       port: 5027,
@@ -68,13 +67,11 @@ describe("dashboard repositories", () => {
 
     const updated = repository.update("123456789012345", {
       label: "Updated",
-      enabled: false,
       config: {
         intervalMs: 2000,
       },
     });
     expect(updated.label).toBe("Updated");
-    expect(updated.enabled).toBe(false);
     expect(updated.config.intervalMs).toBe(2000);
     expect(repository.list()).toHaveLength(1);
 

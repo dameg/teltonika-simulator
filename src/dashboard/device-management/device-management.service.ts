@@ -3,11 +3,9 @@ import { Inject, Injectable } from "@nestjs/common";
 import { getDeviceProfile } from "../../device-profile";
 import { parseDrivingStyleName } from "../../driving-style";
 import {
-  assertUniqueImei,
   DashboardDomainError,
   type DashboardDeviceConfig,
-  type DashboardDeviceRecord,
-  findDuplicateImeis
+  type DashboardDeviceRecord
 } from "../domain";
 import {
   InMemoryDashboardDeviceRepository,
@@ -18,20 +16,7 @@ import {
   type UpdateDashboardDeviceInput
 } from "../repositories";
 
-const importStatuses = new Set(["starting", "running", "reconnecting"]);
-
-const defaultImportedConfig: DashboardDeviceConfig = {
-  host: "127.0.0.1",
-  port: 5027,
-  intervalMs: 1000,
-  simulationSpeed: 0,
-  reconnectDelayMs: 3000,
-  routeFile: undefined,
-  drivingStyle: "normal",
-  seed: 1,
-  deviceProfile: "default-codec8e",
-  packetCount: undefined
-};
+const activeStatuses = new Set(["starting", "running", "reconnecting"]);
 
 type DeviceConfigInput = {
   host: unknown;
@@ -77,7 +62,6 @@ export class DeviceManagementService {
     const device = this.deviceRepository.create({
       imei: this.parseRequiredString(payload.imei, "imei"),
       label: this.parseRequiredString(payload.label, "label"),
-      enabled: this.parseBoolean(payload.enabled, "enabled", true),
       config: this.parseDeviceConfig(payload.config)
     } satisfies CreateDashboardDeviceInput);
 
@@ -90,9 +74,6 @@ export class DeviceManagementService {
 
     if (payload.label !== undefined) {
       patch.label = this.parseRequiredString(payload.label, "label");
-    }
-    if (payload.enabled !== undefined) {
-      patch.enabled = this.parseBoolean(payload.enabled, "enabled");
     }
     if (payload.config !== undefined) {
       patch.config = this.parseDeviceConfig(payload.config);
@@ -109,32 +90,6 @@ export class DeviceManagementService {
     this.positionRepository.clearByDevice(normalizedImei);
   }
 
-  bulkImport(payload: Record<string, unknown>): DashboardDeviceRecord[] {
-    const imeis = this.parseImportImeis(payload.imeis);
-    const duplicateImeis = findDuplicateImeis(imeis);
-
-    if (duplicateImeis.length > 0) {
-      throw new DashboardDomainError(
-        "DUPLICATE_IMEI",
-        `Duplicate IMEIs in import payload: ${duplicateImeis.join(", ")}`
-      );
-    }
-
-    const seenImeis = this.deviceRepository.list().map((device) => device.imei);
-
-    return imeis.map((imei, index) => {
-      assertUniqueImei(imei, seenImeis);
-      seenImeis.push(imei);
-
-      return this.deviceRepository.create({
-        imei,
-        label: `Imported Device ${index + 1}`,
-        enabled: true,
-        config: { ...defaultImportedConfig }
-      } satisfies CreateDashboardDeviceInput);
-    });
-  }
-
   private requireMutableDevice(imei: string): string {
     const device = this.deviceRepository.get(imei);
     if (!device) {
@@ -142,30 +97,11 @@ export class DeviceManagementService {
     }
 
     const run = this.runtimeRepository.get(device.imei);
-    if (run && importStatuses.has(run.status)) {
+    if (run && activeStatuses.has(run.status)) {
       throw new DeviceStateConflictError(device.imei, run.status);
     }
 
     return device.imei;
-  }
-
-  private parseImportImeis(value: unknown): string[] {
-    const raw = this.parseRequiredString(value, "imeis");
-    const imeis = raw
-      .replace(/,\s*\n/gu, "\n")
-      .replace(/\n\s*,/gu, "\n")
-      .split(/\n/u)
-      .flatMap((line) => {
-        const trimmedLine = line.trim();
-        return trimmedLine.length === 0 ? [] : trimmedLine.split(",");
-      })
-      .map((entry) => entry.trim());
-
-    if (imeis.length === 0) {
-      throw new DashboardDomainError("EMPTY_IMEI", "At least one IMEI is required for import");
-    }
-
-    return imeis;
   }
 
   private parseDeviceConfig(value: unknown): DashboardDeviceConfig {
@@ -218,21 +154,6 @@ export class DeviceManagementService {
     }
 
     return this.parseRequiredString(value, field);
-  }
-
-  private parseBoolean(value: unknown, field: string, defaultValue?: boolean): boolean {
-    if (value === undefined) {
-      if (defaultValue !== undefined) {
-        return defaultValue;
-      }
-      throw new Error(`${field} must be a boolean`);
-    }
-
-    if (typeof value !== "boolean") {
-      throw new Error(`${field} must be a boolean`);
-    }
-
-    return value;
   }
 
   private parseInteger(
