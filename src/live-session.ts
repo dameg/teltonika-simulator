@@ -5,7 +5,11 @@ import { sendAvlPacket } from "./avl-session";
 import { getDeviceProfile } from "./device-profile";
 import { performImeiHandshake } from "./imei-handshake";
 import { resolveSimulationRoute } from "./route";
-import { createVehicleSimulator } from "./simulation";
+import {
+  createVehicleSimulator,
+  type VehicleSimulator,
+  type VehicleSimulatorCheckpoint
+} from "./simulation";
 import type { AvlRecord, DrivingStyleName } from "./domain";
 
 export interface LiveSessionLogger {
@@ -25,9 +29,32 @@ export interface LiveSessionOptions {
   seed: number;
   deviceProfile: string;
   packetCount?: number;
+  checkpoint?: VehicleSimulatorCheckpoint;
+  acceptedRecordCount?: number;
   signal?: AbortSignal;
   logger?: LiveSessionLogger;
-  onRecordAccepted?: (record: AvlRecord, packetHex: string) => void;
+  getCurrentConfiguration?: () => Partial<LiveSessionConfiguration>;
+  onRecordAccepted?: (
+    record: AvlRecord,
+    packetHex: string,
+    context: LiveSessionRecordAcceptedContext
+  ) => void;
+}
+
+export interface LiveSessionConfiguration {
+  intervalMs: number;
+  simulationSpeed?: number;
+  drivingStyle: DrivingStyleName;
+  seed: number;
+  deviceProfile: string;
+  packetCount?: number;
+  configRevision?: number;
+}
+
+export interface LiveSessionRecordAcceptedContext {
+  checkpoint: VehicleSimulatorCheckpoint;
+  acceptedRecordCount: number;
+  configuration: Readonly<LiveSessionConfiguration>;
 }
 
 export type LiveSessionResult =
@@ -37,7 +64,21 @@ export type LiveSessionResult =
 type ConnectionAttemptResult =
   | { kind: "completed" }
   | { kind: "rejected" }
-  | { kind: "reconnect"; pendingRecord: AvlRecord | null };
+  | { kind: "reconnect" };
+
+interface PendingRecord {
+  record: AvlRecord;
+  checkpoint: VehicleSimulatorCheckpoint;
+  configuration: LiveSessionConfiguration;
+}
+
+interface LiveSessionState {
+  simulator: VehicleSimulator;
+  profile: ReturnType<typeof getDeviceProfile>;
+  configuration: LiveSessionConfiguration;
+  pendingRecord: PendingRecord | null;
+  acceptedRecordCount: number;
+}
 
 const defaultLogger: LiveSessionLogger = {
   info() {
@@ -60,19 +101,37 @@ export async function runLiveSession(options: LiveSessionOptions): Promise<LiveS
   const logger = options.logger ?? defaultLogger;
   const reconnectDelayMs = options.reconnectDelayMs ?? 5_000;
   const route = resolveSimulationRoute(options.routeFile);
-  const profile = getDeviceProfile(options.deviceProfile);
-  const simulator = createVehicleSimulator({
-    route,
-    drivingStyle: options.drivingStyle,
-    seed: options.seed,
-    startTimestampMs: 1_700_000_000_000,
+  const initialConfiguration = readCurrentConfiguration(options, {
     intervalMs: options.intervalMs,
     simulationSpeed: options.simulationSpeed,
-    externalVoltageMv: profile.defaults.externalVoltageMv,
-    batteryVoltageMv: profile.defaults.batteryVoltageMv
+    drivingStyle: options.drivingStyle,
+    seed: options.seed,
+    deviceProfile: options.deviceProfile,
+    packetCount: options.packetCount
   });
-  let pendingRecord: AvlRecord | null = null;
-  const sessionState = { acceptedRecordCount: 0 };
+  const profile = getDeviceProfile(initialConfiguration.deviceProfile);
+  const simulator = createVehicleSimulator({
+    route,
+    drivingStyle: initialConfiguration.drivingStyle,
+    seed: initialConfiguration.seed,
+    startTimestampMs: 1_700_000_000_000,
+    intervalMs: initialConfiguration.intervalMs,
+    simulationSpeed: initialConfiguration.simulationSpeed,
+    externalVoltageMv: profile.defaults.externalVoltageMv,
+    batteryVoltageMv: profile.defaults.batteryVoltageMv,
+    checkpoint: options.checkpoint
+  });
+  const sessionState: LiveSessionState = {
+    simulator,
+    profile,
+    configuration: initialConfiguration,
+    pendingRecord: null,
+    acceptedRecordCount: integerAtLeast(options.acceptedRecordCount ?? 0, "acceptedRecordCount", 0)
+  };
+
+  if (hasReachedPacketLimit(sessionState)) {
+    return { kind: "completed" };
+  }
 
   while (true) {
     throwIfAborted(options.signal);
@@ -82,13 +141,9 @@ export async function runLiveSession(options: LiveSessionOptions): Promise<LiveS
     try {
       const result = await runConnectionAttempt(
         { ...options, logger },
-        simulator,
-        profile,
-        pendingRecord,
         sessionState,
       );
       if (result.kind === "reconnect") {
-        pendingRecord = result.pendingRecord;
         logger.info(
           `reconnect delay-ms=${reconnectDelayMs} host=${options.host} port=${options.port} imei=${options.imei}`
         );
@@ -111,10 +166,7 @@ export async function runLiveSession(options: LiveSessionOptions): Promise<LiveS
 
 async function runConnectionAttempt(
   options: LiveSessionOptions & { logger: LiveSessionLogger },
-  simulator: ReturnType<typeof createVehicleSimulator>,
-  profile: ReturnType<typeof getDeviceProfile>,
-  pendingRecord: AvlRecord | null,
-  sessionState: { acceptedRecordCount: number },
+  sessionState: LiveSessionState,
 ): Promise<ConnectionAttemptResult> {
   let socket: net.Socket | undefined;
   let removeAbortListener = () => {
@@ -152,20 +204,41 @@ async function runConnectionAttempt(
     while (true) {
       throwIfAborted(options.signal);
 
-      const record = pendingRecord ?? mapVehicleStateToAvlRecord(simulator.next(), profile);
-      pendingRecord = record;
-      const result = await sendAvlPacket(handshake.socket, [record]);
-      pendingRecord = null;
+      if (!sessionState.pendingRecord) {
+        applyCurrentConfiguration(options, sessionState);
+        if (hasReachedPacketLimit(sessionState)) {
+          return { kind: "completed" };
+        }
+
+        const record = mapVehicleStateToAvlRecord(
+          sessionState.simulator.next(),
+          sessionState.profile
+        );
+        sessionState.pendingRecord = {
+          record,
+          checkpoint: sessionState.simulator.getCheckpoint(),
+          configuration: { ...sessionState.configuration }
+        };
+      }
+
+      const pendingRecord = sessionState.pendingRecord;
+      const result = await sendAvlPacket(handshake.socket, [pendingRecord.record]);
       sessionState.acceptedRecordCount += result.acceptedRecordCount;
-      options.onRecordAccepted?.(record, result.packetHex);
+      sessionState.pendingRecord = null;
+      options.onRecordAccepted?.(pendingRecord.record, result.packetHex, {
+        checkpoint: pendingRecord.checkpoint,
+        acceptedRecordCount: sessionState.acceptedRecordCount,
+        configuration: { ...pendingRecord.configuration }
+      });
       options.logger.info(
-        `avl sent imei=${options.imei} records=1 timestamp=${record.timestampMs} ack=${result.acceptedRecordCount}`
+        `avl sent imei=${options.imei} records=1 timestamp=${pendingRecord.record.timestampMs} ack=${result.acceptedRecordCount}`
       );
-      if (options.packetCount !== undefined && sessionState.acceptedRecordCount >= options.packetCount) {
+      applyCurrentConfiguration(options, sessionState);
+      if (hasReachedPacketLimit(sessionState)) {
         return { kind: "completed" };
       }
 
-      await delayWithAbort(options.intervalMs, options.signal);
+      await delayWithAbort(sessionState.configuration.intervalMs, options.signal);
     }
   } catch (error) {
     if (isAbortError(error) || options.signal?.aborted) {
@@ -176,7 +249,7 @@ async function runConnectionAttempt(
       options.logger.info(
         `connection lost imei=${options.imei} reason=${formatError(error)}`
       );
-      return { kind: "reconnect", pendingRecord };
+      return { kind: "reconnect" };
     }
 
     throw error;
@@ -186,6 +259,64 @@ async function runConnectionAttempt(
       await closeSocket(socket);
     }
   }
+}
+
+function applyCurrentConfiguration(
+  options: LiveSessionOptions,
+  sessionState: LiveSessionState
+): void {
+  const nextConfiguration = readCurrentConfiguration(options, sessionState.configuration);
+  const nextProfile = getDeviceProfile(nextConfiguration.deviceProfile);
+
+  sessionState.simulator.updateConfiguration({
+    intervalMs: nextConfiguration.intervalMs,
+    simulationSpeed: nextConfiguration.simulationSpeed ?? 0,
+    drivingStyle: nextConfiguration.drivingStyle,
+    seed: nextConfiguration.seed,
+    externalVoltageMv: nextProfile.defaults.externalVoltageMv,
+    batteryVoltageMv: nextProfile.defaults.batteryVoltageMv
+  });
+  sessionState.profile = nextProfile;
+  sessionState.configuration = nextConfiguration;
+}
+
+function readCurrentConfiguration(
+  options: LiveSessionOptions,
+  current: LiveSessionConfiguration
+): LiveSessionConfiguration {
+  const update = options.getCurrentConfiguration?.() ?? {};
+  const configuration = { ...current, ...update };
+
+  integerAtLeast(configuration.intervalMs, "intervalMs", 1);
+  if (configuration.simulationSpeed !== undefined) {
+    if (!Number.isInteger(configuration.simulationSpeed) || configuration.simulationSpeed < -10 || configuration.simulationSpeed > 10) {
+      throw new RangeError("simulationSpeed must be an integer between -10 and 10");
+    }
+  }
+  if (!Number.isSafeInteger(configuration.seed)) {
+    throw new Error("seed must be a safe integer");
+  }
+  if (configuration.packetCount !== undefined) {
+    integerAtLeast(configuration.packetCount, "packetCount", 1);
+  }
+  if (configuration.configRevision !== undefined) {
+    integerAtLeast(configuration.configRevision, "configRevision", 1);
+  }
+  getDeviceProfile(configuration.deviceProfile);
+
+  return configuration;
+}
+
+function hasReachedPacketLimit(state: LiveSessionState): boolean {
+  return state.configuration.packetCount !== undefined &&
+    state.acceptedRecordCount >= state.configuration.packetCount;
+}
+
+function integerAtLeast(value: number, name: string, min: number): number {
+  if (!Number.isSafeInteger(value) || value < min) {
+    throw new Error(`${name} must be an integer greater than or equal to ${min}`);
+  }
+  return value;
 }
 
 function bindAbortSignal(signal: AbortSignal | undefined, onAbort: () => void): () => void {

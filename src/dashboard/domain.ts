@@ -46,8 +46,17 @@ export interface DashboardDeviceRecord {
   imei: string;
   label: string;
   config: DashboardDeviceConfig;
+  configRevision: number;
   createdAtMs: number;
   updatedAtMs: number;
+}
+
+export interface DashboardConfigRevision {
+  imei: string;
+  configRevision: number;
+  createdAtMs: number;
+  changedFields: string[];
+  config: DashboardDeviceConfig;
 }
 
 export interface DashboardRunRecord {
@@ -67,6 +76,8 @@ export interface DashboardRunOverview {
 
 export interface DashboardPosition {
   imei: string;
+  tripId: string;
+  configRevision: number;
   timestampMs: number;
   latitude: number;
   longitude: number;
@@ -78,6 +89,27 @@ export interface DashboardPosition {
 
 export type DashboardLogContextValue = boolean | number | string | null;
 
+export type DashboardTelemetryValue = boolean | number | string;
+
+export interface DashboardTelemetryField {
+  key: string;
+  label: string;
+  value: DashboardTelemetryValue;
+  displayValue: string;
+  unit?: string;
+  ioId?: number;
+}
+
+export interface DashboardTelemetryGroup {
+  key: string;
+  label: string;
+  fields: DashboardTelemetryField[];
+}
+
+export interface DashboardTelemetrySnapshot {
+  groups: DashboardTelemetryGroup[];
+}
+
 export interface DashboardLogEvent {
   id: string;
   imei?: string;
@@ -87,6 +119,7 @@ export interface DashboardLogEvent {
   timestampMs: number;
   context?: Record<string, DashboardLogContextValue>;
   data?: unknown;
+  telemetry?: DashboardTelemetrySnapshot;
 }
 
 export type DashboardDomainErrorCode =
@@ -94,7 +127,8 @@ export type DashboardDomainErrorCode =
   | "INVALID_IMEI"
   | "DUPLICATE_IMEI"
   | "DEVICE_NOT_FOUND"
-  | "RUN_NOT_FOUND";
+  | "RUN_NOT_FOUND"
+  | "ACTIVE_CONFIG_FIELD_LOCKED";
 
 export class DashboardDomainError extends Error {
   readonly code: DashboardDomainErrorCode;

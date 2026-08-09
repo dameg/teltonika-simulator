@@ -25,15 +25,14 @@ import {
 import { Activity, Filter, Pencil, Play, Plus, RefreshCw, Square, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactElement } from "react";
 
-import { DeviceMap, type MapPosition } from "./DeviceMap";
+import { DeviceMap, type MapConfigRevision, type MapPosition } from "./DeviceMap";
+import { LogRow, type FrontendLogEvent } from "./LogRow";
 
 type Status = "configured" | "starting" | "running" | "reconnecting" | "stopped" | "rejected" | "failed" | "completed";
-type Severity = "debug" | "info" | "warn" | "error";
 type DeviceConfig = { host: string; port: number; intervalMs: number; simulationSpeed: number; reconnectDelayMs: number; routeFile?: string; drivingStyle: string; seed: number; deviceProfile: string; packetCount?: number };
-type Device = { imei: string; label: string; config: DeviceConfig };
+type Device = { imei: string; label: string; config: DeviceConfig; configRevision: number };
 type DeviceStatus = Device & { status: Status; updatedAtMs: number; lastStartAtMs?: number; lastStopAtMs?: number; lastError?: string };
 type Overview = { total: number; counts: Record<Status, number> };
-type LogEvent = { id: string; imei?: string; severity: Severity; type: string; message: string; timestampMs: number; data?: unknown };
 
 const emptyConfig: DeviceConfig = { host: "127.0.0.1", port: 5027, intervalMs: 1000, simulationSpeed: 0, reconnectDelayMs: 3000, routeFile: "routes/krakow-berlin.route.json", drivingStyle: "normal", seed: 1, deviceProfile: "fmc650-fms", packetCount: 1_000 };
 const emptyForm = { imei: "", label: "FMC650 test device", config: { ...emptyConfig } };
@@ -59,10 +58,6 @@ function numberValue(value: string | number): number | undefined {
   return value === "" ? undefined : Number(value);
 }
 
-function formatTime(value?: number): string {
-  return value ? new Date(value).toLocaleTimeString() : "—";
-}
-
 function statusColor(status: Status): string {
   if (status === "running") return "teal";
   if (status === "starting" || status === "reconnecting") return "blue";
@@ -70,20 +65,48 @@ function statusColor(status: Status): string {
   return "gray";
 }
 
-function severityColor(severity: Severity): string {
-  return severity === "error" ? "red" : severity === "warn" ? "orange" : severity === "info" ? "blue" : "gray";
-}
-
 function actionLabel(status: Status): string {
   return status === "starting" || status === "reconnecting" ? "Starting…" : status === "running" ? "Stop" : "Start";
+}
+
+function samePositions(current: readonly MapPosition[], next: readonly MapPosition[]): boolean {
+  if (current.length !== next.length) return false;
+  for (let index = 0; index < current.length; index += 1) {
+    const left = current[index]!;
+    const right = next[index]!;
+    if (
+      left.imei !== right.imei
+      || left.tripId !== right.tripId
+      || left.configRevision !== right.configRevision
+      || left.timestampMs !== right.timestampMs
+      || left.latitude !== right.latitude
+      || left.longitude !== right.longitude
+    ) return false;
+  }
+  return true;
+}
+
+function sameConfigRevisions(current: readonly MapConfigRevision[], next: readonly MapConfigRevision[]): boolean {
+  if (current.length !== next.length) return false;
+  for (let index = 0; index < current.length; index += 1) {
+    const left = current[index]!;
+    const right = next[index]!;
+    if (
+      left.imei !== right.imei
+      || left.configRevision !== right.configRevision
+      || left.createdAtMs !== right.createdAtMs
+    ) return false;
+  }
+  return true;
 }
 
 export function App(): ReactElement {
   const [devices, setDevices] = useState<Device[]>([]);
   const [statuses, setStatuses] = useState<DeviceStatus[]>([]);
   const [overview, setOverview] = useState<Overview>({ total: 0, counts: { configured: 0, starting: 0, running: 0, reconnecting: 0, stopped: 0, rejected: 0, failed: 0, completed: 0 } });
-  const [logs, setLogs] = useState<LogEvent[]>([]);
+  const [logs, setLogs] = useState<FrontendLogEvent[]>([]);
   const [positions, setPositions] = useState<MapPosition[]>([]);
+  const [configRevisions, setConfigRevisions] = useState<MapConfigRevision[]>([]);
   const [selectedImei, setSelectedImei] = useState("");
   const [logImei, setLogImei] = useState("");
   const [form, setForm] = useState(emptyForm);
@@ -104,14 +127,15 @@ export function App(): ReactElement {
         request<{ devices: Device[] }>("/api/devices"),
         request<{ devices: DeviceStatus[] }>("/api/status/devices"),
         request<Overview>("/api/status/overview"),
-        request<{ events: LogEvent[] }>(`/api/logs?limit=100${logImei ? `&imei=${encodeURIComponent(logImei)}` : ""}${severity ? `&severity=${encodeURIComponent(severity)}` : ""}${eventType ? `&type=${encodeURIComponent(eventType)}` : ""}`),
-        request<{ positions: MapPosition[] }>("/api/status/positions")
+        request<{ events: FrontendLogEvent[] }>(`/api/logs?limit=100${logImei ? `&imei=${encodeURIComponent(logImei)}` : ""}${severity ? `&severity=${encodeURIComponent(severity)}` : ""}${eventType ? `&type=${encodeURIComponent(eventType)}` : ""}`),
+        request<{ positions: MapPosition[]; configRevisions: MapConfigRevision[] }>("/api/status/positions")
       ]);
       setDevices(deviceResponse.devices);
       setStatuses(statusResponse.devices);
       setOverview(overviewResponse);
       setLogs(logResponse.events);
-      setPositions(positionResponse.positions);
+      setPositions((current) => samePositions(current, positionResponse.positions) ? current : positionResponse.positions);
+      setConfigRevisions((current) => sameConfigRevisions(current, positionResponse.configRevisions) ? current : positionResponse.configRevisions);
     } catch (refreshError) {
       setError(refreshError instanceof Error ? refreshError.message : "Polling failed");
     } finally {
@@ -130,6 +154,11 @@ export function App(): ReactElement {
   const formStatus = form.imei ? statusByImei.get(form.imei) : undefined;
   const formActive = formStatus ? activeStatuses.has(formStatus.status) : false;
   const runningCount = overview.counts.running + overview.counts.starting + overview.counts.reconnecting;
+  const mapDevices = useMemo(
+    () => devices.map((device) => ({ ...device, status: statusByImei.get(device.imei)?.status ?? "configured" })),
+    [devices, statusByImei],
+  );
+  const newestLogs = useMemo(() => [...logs].reverse(), [logs]);
 
   const setActionBusy = (key: string, value: boolean) => setBusy((current) => ({ ...current, [key]: value }));
   const runAction = async (key: string, operation: () => Promise<unknown>) => {
@@ -222,7 +251,7 @@ export function App(): ReactElement {
                 <Box><Title order={2}>Device map</Title><Text size="sm" c="dimmed">Acknowledged positions and route history</Text></Box>
                 {selectedDevice && <Badge variant="outline" color="gray">Focused: {selectedDevice.label}</Badge>}
               </Group>
-              <DeviceMap devices={devices.map((device) => ({ ...device, status: statusByImei.get(device.imei)?.status ?? "configured" }))} positions={positions} selectedImei={selectedImei} />
+              <DeviceMap devices={mapDevices} positions={positions} configRevisions={configRevisions} selectedImei={selectedImei} />
             </Paper>
 
             <Paper withBorder className="surface device-panel">
@@ -251,7 +280,7 @@ export function App(): ReactElement {
                         <Group justify="space-between" className="device-card-actions">
                           <Button size="compact-xs" variant={active ? "light" : "default"} color={active ? "red" : undefined} loading={busy[device.imei]} disabled={deviceStatus === "starting" || deviceStatus === "reconnecting"} onClick={() => void runAction(device.imei, () => request(`/api/runtime/devices/${encodeURIComponent(device.imei)}/${active ? "stop" : "start"}`, { method: "POST" }))}>{actionLabel(deviceStatus)}</Button>
                           <Group gap={2}>
-                            <Tooltip label={active ? "Stop the device before editing" : "Edit device"}><ActionIcon variant="subtle" aria-label={`Edit ${device.label}`} onClick={() => openEditModal(device)}><Pencil size={14} /></ActionIcon></Tooltip>
+                            <Tooltip label={active ? "Edit live simulation settings" : "Edit device"}><ActionIcon variant="subtle" aria-label={`Edit ${device.label}`} onClick={() => openEditModal(device)}><Pencil size={14} /></ActionIcon></Tooltip>
                             <Tooltip label="Delete device"><ActionIcon variant="subtle" color="red" aria-label={`Delete ${device.label}`} disabled={active || busy[`delete-${device.imei}`]} onClick={() => void runAction(`delete-${device.imei}`, async () => { await request(`/api/devices/${encodeURIComponent(device.imei)}`, { method: "DELETE" }); if (selectedImei === device.imei) { setSelectedImei(""); setLogsDrawerOpen(false); } })}><Trash2 size={14} /></ActionIcon></Tooltip>
                           </Group>
                         </Group>
@@ -266,27 +295,27 @@ export function App(): ReactElement {
       </Box>
 
       <Modal opened={deviceModalOpen} onClose={() => setDeviceModalOpen(false)} title="Device setup" size="lg" centered>
-        {formActive && <Alert color="orange" variant="light" mb="md">Stop this device before changing its configuration.</Alert>}
+        {formActive && <Alert color="blue" variant="light" mb="md">Live simulation changes apply from the next AVL packet. Connection and route fields stay locked while the device is active.</Alert>}
         <form onSubmit={submitDevice}>
           <Stack gap="md">
             <SimpleGrid cols={{ base: 1, sm: 2 }}>
               <TextInput label="IMEI" placeholder="15 digits" value={form.imei} disabled={devices.some((device) => device.imei === form.imei) || formActive} onChange={(event) => setForm({ ...form, imei: event.target.value })} rightSection={<Tooltip label="Generate IMEI"><ActionIcon variant="subtle" aria-label="Generate IMEI" disabled={Boolean(form.imei) || formActive} onClick={() => setForm((current) => ({ ...current, imei: generateImei() }))}><RefreshCw size={14} /></ActionIcon></Tooltip>} />
-              <TextInput label="Display name" value={form.label} disabled={formActive} onChange={(event) => setForm({ ...form, label: event.target.value })} />
+              <TextInput label="Display name" value={form.label} onChange={(event) => setForm({ ...form, label: event.target.value })} />
             </SimpleGrid>
             <Divider label="Connection and simulation" labelPosition="left" />
             <SimpleGrid cols={{ base: 1, sm: 2 }}>
               <TextInput label="Parser host" value={form.config.host} disabled={formActive} onChange={(event) => changeConfig("host", event.target.value)} />
               <NumberInput label="Parser port" value={form.config.port} disabled={formActive} allowDecimal={false} onChange={(value) => changeConfig("port", value)} />
-              <NumberInput label="Interval (ms)" value={form.config.intervalMs} disabled={formActive} allowDecimal={false} onChange={(value) => changeConfig("intervalMs", value)} />
+              <NumberInput label="Interval (ms)" value={form.config.intervalMs} allowDecimal={false} onChange={(value) => changeConfig("intervalMs", value)} />
               <NumberInput label="Reconnect delay (ms)" value={form.config.reconnectDelayMs} disabled={formActive} allowDecimal={false} onChange={(value) => changeConfig("reconnectDelayMs", value)} />
-              <Select label="Driving style" value={form.config.drivingStyle} disabled={formActive} allowDeselect={false} data={[{ value: "eco", label: "Eco" }, { value: "normal", label: "Normal" }, { value: "aggressive", label: "Aggressive" }]} onChange={(value) => value && changeConfig("drivingStyle", value)} />
-              <NumberInput label="Seed" value={form.config.seed} disabled={formActive} allowDecimal={false} onChange={(value) => changeConfig("seed", value)} />
-              <NumberInput label="Packet limit" value={form.config.packetCount} disabled={formActive} allowDecimal={false} onChange={(value) => changeConfig("packetCount", value)} />
-              <Select label="Device profile" value={form.config.deviceProfile} disabled={formActive} allowDeselect={false} data={[{ value: "default-codec8e", label: "Default Codec 8E" }, { value: "fmc650-fms", label: "FMC650 FMS/J1939" }]} onChange={(value) => value && changeConfig("deviceProfile", value)} />
+              <Select label="Driving style" value={form.config.drivingStyle} allowDeselect={false} data={[{ value: "eco", label: "Eco" }, { value: "normal", label: "Normal" }, { value: "aggressive", label: "Aggressive" }]} onChange={(value) => value && changeConfig("drivingStyle", value)} />
+              <NumberInput label="Seed" value={form.config.seed} allowDecimal={false} onChange={(value) => changeConfig("seed", value)} />
+              <NumberInput label="Packet limit" value={form.config.packetCount} allowDecimal={false} onChange={(value) => changeConfig("packetCount", value)} />
+              <Select label="Device profile" value={form.config.deviceProfile} allowDeselect={false} data={[{ value: "default-codec8e", label: "Default Codec 8E" }, { value: "fmc650-fms", label: "FMC650 FMS/J1939" }]} onChange={(value) => value && changeConfig("deviceProfile", value)} />
             </SimpleGrid>
             <Select label="Predefined route" value={form.config.routeFile ?? ""} disabled={formActive} allowDeselect={false} data={[...predefinedRoutes.map(([value, label]) => ({ value, label })), ...form.config.routeFile && !predefinedRoutes.some(([path]) => path === form.config.routeFile) ? [{ value: form.config.routeFile, label: `${form.config.routeFile} (custom)` }] : []]} onChange={(value) => changeConfig("routeFile", value ?? "")} />
-            <Box><Group justify="space-between" mb={5}><Text size="sm" fw={500}>Simulation speed</Text><Text size="xs" c="dimmed">{form.config.simulationSpeed < 0 ? `${Math.abs(form.config.simulationSpeed)}× slower` : form.config.simulationSpeed > 0 ? `${form.config.simulationSpeed}× faster` : "Real time"}</Text></Group><Slider min={-10} max={10} step={1} value={form.config.simulationSpeed} disabled={formActive} label={null} onChange={(value) => changeConfig("simulationSpeed", value)} /></Box>
-            <Group justify="flex-end"><Button variant="default" onClick={() => setDeviceModalOpen(false)}>Cancel</Button><Button type="submit" loading={busy.save} disabled={formActive}>{devices.some((device) => device.imei === form.imei) ? "Save changes" : "Create device"}</Button></Group>
+            <Box><Group justify="space-between" mb={5}><Text size="sm" fw={500}>Simulation speed</Text><Text size="xs" c="dimmed">{form.config.simulationSpeed < 0 ? `${Math.abs(form.config.simulationSpeed)}× slower` : form.config.simulationSpeed > 0 ? `${form.config.simulationSpeed}× faster` : "Real time"}</Text></Group><Slider min={-10} max={10} step={1} value={form.config.simulationSpeed} label={null} onChange={(value) => changeConfig("simulationSpeed", value)} /></Box>
+            <Group justify="flex-end"><Button variant="default" onClick={() => setDeviceModalOpen(false)}>Cancel</Button><Button type="submit" loading={busy.save}>{devices.some((device) => device.imei === form.imei) ? "Save changes" : "Create device"}</Button></Group>
           </Stack>
         </form>
       </Modal>
@@ -301,7 +330,7 @@ export function App(): ReactElement {
           <Text size="xs" c="dimmed">Polling every second · newest 100 events</Text>
           {logs.length === 0 ? <Box className="empty-state"><Text fw={600}>No log events</Text><Text size="sm" c="dimmed">Events will appear when this device runs.</Text></Box> : (
             <ScrollArea h="calc(100vh - 210px)" offsetScrollbars>
-              <Stack gap={0}>{[...logs].reverse().map((log) => <Box key={log.id} className="log-row"><Group gap="xs" wrap="nowrap"><Text size="xs" c="dimmed" className="log-time">{formatTime(log.timestampMs)}</Text><Badge size="xs" variant="light" color={severityColor(log.severity)}>{log.severity}</Badge><Text size="sm" fw={600}>{log.type}</Text></Group><Text size="sm" c="dimmed" mt={5}>{log.message}</Text>{log.data !== undefined && <details><summary>JSON package</summary><pre>{JSON.stringify(log.data, null, 2)}</pre></details>}</Box>)}</Stack>
+              <Stack gap={0}>{newestLogs.map((log) => <LogRow key={log.id} log={log} />)}</Stack>
             </ScrollArea>
           )}
         </Stack>

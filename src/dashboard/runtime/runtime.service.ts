@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 
 import { runLiveSession } from "../../live-session";
 import type { AvlRecord } from "../../domain";
+import type { VehicleSimulatorCheckpoint } from "../../simulation";
 import {
   DashboardDomainError,
   normalizeImei,
@@ -16,10 +17,12 @@ import {
 } from "../domain";
 import {
   InMemoryDashboardDeviceRepository,
+  InMemoryDashboardJourneyRepository,
   InMemoryDashboardLogRepository,
   InMemoryDashboardPositionRepository,
   InMemoryDashboardRuntimeRepository,
 } from "../repositories";
+import { createDashboardTelemetry } from "../telemetry";
 
 export interface RuntimeActionResult {
   imei: string;
@@ -32,7 +35,14 @@ export interface RuntimeBatchResult {
 
 interface ActiveRunState {
   abortController: AbortController;
+  completion?: Promise<void>;
   stopRequested: boolean;
+  tripId: string;
+}
+
+interface AcceptedPayload {
+  data: unknown;
+  telemetry: ReturnType<typeof createDashboardTelemetry>;
 }
 
 class ActiveRunConflictError extends Error {
@@ -48,11 +58,13 @@ class ActiveRunConflictError extends Error {
 @Injectable()
 export class RuntimeService {
   private readonly activeRuns = new Map<string, ActiveRunState>();
-  private readonly acceptedPayloads = new Map<string, unknown>();
+  private readonly acceptedPayloads = new Map<string, AcceptedPayload>();
 
   constructor(
     @Inject(InMemoryDashboardDeviceRepository)
     private readonly deviceRepository: InMemoryDashboardDeviceRepository,
+    @Inject(InMemoryDashboardJourneyRepository)
+    private readonly journeyRepository: InMemoryDashboardJourneyRepository,
     @Inject(InMemoryDashboardRuntimeRepository)
     private readonly runtimeRepository: InMemoryDashboardRuntimeRepository,
     @Inject(InMemoryDashboardLogRepository)
@@ -70,10 +82,13 @@ export class RuntimeService {
     }
 
     const abortController = new AbortController();
-    this.activeRuns.set(normalizedImei, {
+    const journey = this.prepareJourney(device);
+    const activeRun: ActiveRunState = {
       abortController,
       stopRequested: false,
-    });
+      tripId: journey.tripId,
+    };
+    this.activeRuns.set(normalizedImei, activeRun);
 
     const now = Date.now();
     const runId = `${normalizedImei}-${now}`;
@@ -94,12 +109,17 @@ export class RuntimeService {
       context: { runId },
     });
 
-    void this.runDeviceSession(device, runId, abortController.signal);
+    activeRun.completion = this.runDeviceSession(
+      device,
+      runId,
+      journey.tripId,
+      abortController.signal,
+    );
 
     return { imei: normalizedImei, status: "started" };
   }
 
-  stopDevice(imei: string): RuntimeActionResult {
+  stopDevice(imei: string): RuntimeActionResult | Promise<RuntimeActionResult> {
     const normalizedImei = normalizeImei(imei);
     const activeRun = this.activeRuns.get(normalizedImei);
     const now = Date.now();
@@ -126,7 +146,9 @@ export class RuntimeService {
       timestampMs: now,
     });
 
-    return { imei: normalizedImei, status: "stopped" };
+    return activeRun.completion
+      ? activeRun.completion.then(() => ({ imei: normalizedImei, status: "stopped" as const }))
+      : { imei: normalizedImei, status: "stopped" };
   }
 
   startSelectedDevices(imeis: readonly string[]): RuntimeBatchResult {
@@ -144,8 +166,10 @@ export class RuntimeService {
     return { results };
   }
 
-  stopAllDevices(): RuntimeBatchResult {
-    const results = [...this.activeRuns.keys()].map((imei) => this.stopDevice(imei));
+  async stopAllDevices(): Promise<RuntimeBatchResult> {
+    const results = await Promise.all(
+      [...this.activeRuns.keys()].map((imei) => this.stopDevice(imei)),
+    );
     return { results };
   }
 
@@ -156,6 +180,7 @@ export class RuntimeService {
   private async runDeviceSession(
     device: DashboardDeviceRecord,
     runId: string,
+    tripId: string,
     signal: AbortSignal,
   ): Promise<void> {
     const normalizedImei = device.imei;
@@ -165,13 +190,39 @@ export class RuntimeService {
         ...device.config,
         imei: normalizedImei,
         signal,
-        onRecordAccepted: (record, packetHex) => {
-          this.recordPosition(normalizedImei, record);
-          this.acceptedPayloads.set(normalizedImei, jsonSafe({
-            protocol: "codec8e",
-            rawHex: packetHex,
-            record,
-          }));
+        checkpoint: this.journeyRepository.get<VehicleSimulatorCheckpoint>(normalizedImei)?.checkpoint,
+        acceptedRecordCount: this.journeyRepository.get(normalizedImei)?.acceptedRecordCount,
+        getCurrentConfiguration: () => {
+          const current = this.deviceRepository.get(normalizedImei) ?? device;
+          return {
+            intervalMs: current.config.intervalMs,
+            simulationSpeed: current.config.simulationSpeed,
+            drivingStyle: current.config.drivingStyle,
+            seed: current.config.seed,
+            deviceProfile: current.config.deviceProfile,
+            packetCount: current.config.packetCount,
+            configRevision: current.configRevision,
+          };
+        },
+        onRecordAccepted: (record, packetHex, context) => {
+          const configRevision = context.configuration.configRevision ?? device.configRevision;
+          this.recordPosition(normalizedImei, tripId, configRevision, record);
+          this.journeyRepository.set<VehicleSimulatorCheckpoint>({
+            imei: normalizedImei,
+            tripId,
+            routeFile: device.config.routeFile,
+            acceptedRecordCount: context.acceptedRecordCount,
+            completed: false,
+            checkpoint: context.checkpoint,
+          });
+          this.acceptedPayloads.set(normalizedImei, {
+            data: jsonSafe({
+              protocol: "codec8e",
+              rawHex: packetHex,
+              record,
+            }),
+            telemetry: createDashboardTelemetry(record),
+          });
         },
         logger: {
           info: (message) => this.handleLiveSessionLog(normalizedImei, runId, message),
@@ -228,6 +279,14 @@ export class RuntimeService {
       lastStopAtMs: now,
       lastError,
     });
+
+    const journey = this.journeyRepository.get(imei);
+    if (journey) {
+      this.journeyRepository.set({
+        ...journey,
+        completed: status === "completed",
+      });
+    }
 
     const outcomeMap: Record<
       typeof status,
@@ -360,13 +419,15 @@ export class RuntimeService {
         status: "running",
         updatedAtMs: timestampMs,
       });
+      const acceptedPayload = this.acceptedPayloads.get(imei);
       this.appendLog({
         imei,
         severity: "info",
         type: "avlPacketSent",
         message,
         timestampMs,
-        data: this.acceptedPayloads.get(imei),
+        data: acceptedPayload?.data,
+        telemetry: acceptedPayload?.telemetry,
       });
       this.acceptedPayloads.delete(imei);
 
@@ -412,9 +473,31 @@ export class RuntimeService {
     return device;
   }
 
-  private recordPosition(imei: string, record: AvlRecord): void {
+  private prepareJourney(device: DashboardDeviceRecord) {
+    const existing = this.journeyRepository.get(device.imei);
+    if (existing && !existing.completed && existing.routeFile === device.config.routeFile) {
+      return existing;
+    }
+
+    return this.journeyRepository.set({
+      imei: device.imei,
+      tripId: randomUUID(),
+      routeFile: device.config.routeFile,
+      acceptedRecordCount: 0,
+      completed: false,
+    });
+  }
+
+  private recordPosition(
+    imei: string,
+    tripId: string,
+    configRevision: number,
+    record: AvlRecord,
+  ): void {
     this.positionRepository.append({
       imei,
+      tripId,
+      configRevision,
       timestampMs: record.timestampMs,
       latitude: record.gps.latitude / 10_000_000,
       longitude: record.gps.longitude / 10_000_000,

@@ -8,7 +8,7 @@ import {
 
 export type CreateDashboardDeviceInput = Omit<
   DashboardDeviceRecord,
-  "createdAtMs" | "imei" | "updatedAtMs"
+  "configRevision" | "createdAtMs" | "imei" | "updatedAtMs"
 > & {
   imei: string;
 };
@@ -29,6 +29,7 @@ export class InMemoryDashboardDeviceRepository {
       ...cloneDeviceRecord({
         ...input,
         imei,
+        configRevision: 1,
         createdAtMs: Date.now(),
         updatedAtMs: Date.now(),
       }),

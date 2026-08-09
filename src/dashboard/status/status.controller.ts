@@ -43,12 +43,12 @@ export class StatusController {
 
   @Get("positions")
   listPositions() {
-    return { positions: this.statusService.listPositions() };
+    return this.statusService.listPositions();
   }
 
   @Get("positions/:imei")
   listDevicePositions(@Param("imei") imei: string) {
-    return { positions: this.statusService.listPositions(imei) };
+    return this.statusService.listPositions(imei);
   }
 
   @Delete("state")

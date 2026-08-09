@@ -16,6 +16,7 @@ import {
 import { DashboardDomainError } from "../domain";
 import {
   DeviceManagementService,
+  isActiveConfigFieldLockedError,
   isDeviceStateConflictError
 } from "./device-management.service";
 
@@ -102,6 +103,16 @@ function toHttpException(error: unknown): BadRequestException | ConflictExceptio
       error: {
         code: "DEVICE_RUNNING",
         message: error.message
+      }
+    });
+  }
+
+  if (isActiveConfigFieldLockedError(error)) {
+    return new ConflictException({
+      error: {
+        code: "ACTIVE_CONFIG_FIELD_LOCKED",
+        message: error.message,
+        fields: error.fields,
       }
     });
   }

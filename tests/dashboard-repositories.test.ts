@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import {
   InMemoryDashboardDeviceRepository,
+  InMemoryDashboardConfigRevisionRepository,
+  InMemoryDashboardJourneyRepository,
   InMemoryDashboardLogRepository,
   InMemoryDashboardPositionRepository,
   InMemoryDashboardRuntimeRepository,
@@ -152,6 +154,8 @@ describe("dashboard repositories", () => {
     const repository = new InMemoryDashboardPositionRepository();
     const point = {
       imei: "123456789012345",
+      tripId: "trip-1",
+      configRevision: 1,
       timestampMs: 1,
       latitude: 54.6872,
       longitude: 25.2797,
@@ -171,6 +175,52 @@ describe("dashboard repositories", () => {
     expect(repository.list()).toEqual([]);
   });
 
+  it("stores immutable configuration revisions and filters them by referenced points", () => {
+    const repository = new InMemoryDashboardConfigRevisionRepository();
+    const config = createDeviceInput("123456789012345").config;
+
+    repository.append({
+      imei: "123456789012345",
+      configRevision: 1,
+      createdAtMs: 1,
+      changedFields: [],
+      config,
+    });
+    repository.append({
+      imei: "123456789012345",
+      configRevision: 2,
+      createdAtMs: 2,
+      changedFields: ["drivingStyle"],
+      config: { ...config, drivingStyle: "aggressive" },
+    });
+
+    expect(repository.listReferenced([
+      { imei: "123456789012345", configRevision: 2 },
+    ])).toEqual([
+      expect.objectContaining({ configRevision: 2, changedFields: ["drivingStyle"] }),
+    ]);
+  });
+
+  it("stores resumable journey state independently per device", () => {
+    const repository = new InMemoryDashboardJourneyRepository();
+    repository.set({
+      imei: "123456789012345",
+      tripId: "trip-1",
+      routeFile: "route.json",
+      acceptedRecordCount: 4,
+      completed: false,
+      checkpoint: { nextTimestampMs: 5 },
+    });
+
+    expect(repository.get("123456789012345")).toMatchObject({
+      tripId: "trip-1",
+      acceptedRecordCount: 4,
+      checkpoint: { nextTimestampMs: 5 },
+    });
+    repository.delete("123456789012345");
+    expect(repository.get("123456789012345")).toBeUndefined();
+  });
+
   it("keeps repository instances process-local", () => {
     const devicesA = new InMemoryDashboardDeviceRepository();
     const devicesB = new InMemoryDashboardDeviceRepository();
@@ -184,7 +234,7 @@ describe("dashboard repositories", () => {
     devicesA.create(createDeviceInput("123456789012345"));
     runsA.set(createRunRecord("123456789012345", "running"));
     logsA.append(createLogEvent("1"));
-    positionsA.append({ imei: "123456789012345", timestampMs: 1, latitude: 1, longitude: 1, altitudeMeters: 1, headingDegrees: 1, speedKph: 1, satellites: 1 });
+    positionsA.append({ imei: "123456789012345", tripId: "trip-1", configRevision: 1, timestampMs: 1, latitude: 1, longitude: 1, altitudeMeters: 1, headingDegrees: 1, speedKph: 1, satellites: 1 });
 
     expect(devicesB.list()).toEqual([]);
     expect(runsB.list()).toEqual([]);

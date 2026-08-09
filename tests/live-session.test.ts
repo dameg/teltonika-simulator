@@ -1,7 +1,11 @@
 import { setTimeout as delay } from "node:timers/promises";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { runLiveSession } from "../src";
+import { runLiveSession } from "../src/live-session";
+import type {
+  LiveSessionConfiguration,
+  LiveSessionRecordAcceptedContext
+} from "../src/live-session";
 import { startTeltonikaParserFixture, type TeltonikaParserFixture } from "./fixtures/teltonika-parser-fixture";
 
 const routeFile = `${__dirname}/fixtures/city-loop.route.json`;
@@ -41,6 +45,134 @@ describe("live session runtime", () => {
     const second = await collectPacketHexSequence();
 
     expect(first).toEqual(second);
+  });
+
+  it("resumes at the next acknowledged record and preserves the accepted count", async () => {
+    const baseline = await collectPacketHexSequence(4);
+    const firstFixture = await useFixture();
+    const firstContexts: LiveSessionRecordAcceptedContext[] = [];
+    const firstPackets: string[] = [];
+
+    await expect(runLiveSession({
+      host: firstFixture.host,
+      port: firstFixture.port,
+      imei: "123456789012345",
+      intervalMs: 5,
+      routeFile,
+      drivingStyle: "normal",
+      seed: 7,
+      deviceProfile: "default-codec8e",
+      packetCount: 2,
+      onRecordAccepted: (_record, packetHex, context) => {
+        firstPackets.push(packetHex);
+        firstContexts.push(context);
+      }
+    })).resolves.toEqual({ kind: "completed" });
+
+    const checkpoint = firstContexts.at(-1)?.checkpoint;
+    expect(checkpoint).toBeDefined();
+    expect(firstContexts.map((context) => context.acceptedRecordCount)).toEqual([1, 2]);
+    expect(() => JSON.stringify(checkpoint)).not.toThrow();
+
+    const secondFixture = await useFixture();
+    const resumedPackets: string[] = [];
+    const resumedCounts: number[] = [];
+    await expect(runLiveSession({
+      host: secondFixture.host,
+      port: secondFixture.port,
+      imei: "123456789012345",
+      intervalMs: 5,
+      routeFile,
+      drivingStyle: "normal",
+      seed: 7,
+      deviceProfile: "default-codec8e",
+      packetCount: 4,
+      checkpoint,
+      acceptedRecordCount: 2,
+      onRecordAccepted: (_record, packetHex, context) => {
+        resumedPackets.push(packetHex);
+        resumedCounts.push(context.acceptedRecordCount);
+      }
+    })).resolves.toEqual({ kind: "completed" });
+
+    expect([...firstPackets, ...resumedPackets]).toEqual(baseline);
+    expect(resumedCounts).toEqual([3, 4]);
+  });
+
+  it("applies live configuration at the next packet boundary and reports its revision", async () => {
+    const fixture = await useFixture();
+    let configuration: Partial<LiveSessionConfiguration> = { configRevision: 1 };
+    const accepted: Array<{
+      timestampMs: number;
+      ioIds: number[];
+      context: LiveSessionRecordAcceptedContext;
+    }> = [];
+
+    await expect(runLiveSession({
+      host: fixture.host,
+      port: fixture.port,
+      imei: "123456789012345",
+      intervalMs: 5,
+      routeFile,
+      drivingStyle: "normal",
+      seed: 7,
+      deviceProfile: "default-codec8e",
+      packetCount: 2,
+      getCurrentConfiguration: () => configuration,
+      onRecordAccepted: (record, _packetHex, context) => {
+        accepted.push({
+          timestampMs: record.timestampMs,
+          ioIds: [
+            ...record.io.oneByte,
+            ...record.io.twoBytes,
+            ...record.io.fourBytes,
+            ...record.io.eightBytes,
+            ...record.io.xBytes
+          ].map((element) => element.id),
+          context
+        });
+        if (accepted.length === 1) {
+          configuration = {
+            intervalMs: 10,
+            simulationSpeed: 2,
+            drivingStyle: "aggressive",
+            seed: 8,
+            deviceProfile: "fmc650-fms",
+            packetCount: 2,
+            configRevision: 2
+          };
+        }
+      }
+    })).resolves.toEqual({ kind: "completed" });
+
+    expect(accepted.map(({ context }) => context.configuration.configRevision)).toEqual([1, 2]);
+    expect((accepted[1]?.timestampMs ?? 0) - (accepted[0]?.timestampMs ?? 0)).toBe(20);
+    expect(accepted[0]?.ioIds).not.toEqual(accepted[1]?.ioIds);
+  });
+
+  it("completes without another packet when a live packet limit is lowered", async () => {
+    const fixture = await useFixture();
+    let packetCount: number | undefined;
+    let acceptedCount = 0;
+
+    await expect(runLiveSession({
+      host: fixture.host,
+      port: fixture.port,
+      imei: "123456789012345",
+      intervalMs: 1,
+      routeFile,
+      drivingStyle: "normal",
+      seed: 7,
+      deviceProfile: "default-codec8e",
+      getCurrentConfiguration: () => ({ packetCount }),
+      onRecordAccepted: () => {
+        acceptedCount += 1;
+        packetCount = 1;
+      }
+    })).resolves.toEqual({ kind: "completed" });
+
+    expect(acceptedCount).toBe(1);
+    expect(fixture.avlFrames).toHaveLength(1);
   });
 
   it("advances AVL record timestamps by the configured interval", async () => {
@@ -192,6 +324,7 @@ describe("live session runtime", () => {
 
   it("does not silently retry after an AVL acknowledgement mismatch", async () => {
     const fixture = await useFixture({ avlAcknowledgementCount: 0 });
+    let acceptedCallbackCount = 0;
 
     await expect(
       runLiveSession({
@@ -203,7 +336,10 @@ describe("live session runtime", () => {
         routeFile,
         drivingStyle: "normal",
         seed: 7,
-        deviceProfile: "default-codec8e"
+        deviceProfile: "default-codec8e",
+        onRecordAccepted: () => {
+          acceptedCallbackCount += 1;
+        }
       })
     ).rejects.toThrow("AVL acknowledgement count mismatch: expected 1 record(s), received 0.");
 
@@ -212,6 +348,7 @@ describe("live session runtime", () => {
     expect(fixture.imeiFrames).toHaveLength(1);
     expect(fixture.avlFrames).toHaveLength(1);
     expect(fixture.clientSockets).toHaveLength(0);
+    expect(acceptedCallbackCount).toBe(0);
   });
 
   async function useFixture(

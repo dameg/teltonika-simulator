@@ -7,7 +7,9 @@ import { runMultiDeviceRuntime } from "./multi-device-runtime";
 export { helpText, parseConfig } from "./config";
 export { startDashboardBackend } from "./dashboard-backend";
 export {
+  InMemoryDashboardConfigRevisionRepository,
   InMemoryDashboardDeviceRepository,
+  InMemoryDashboardJourneyRepository,
   InMemoryDashboardLogRepository,
   InMemoryDashboardPositionRepository,
   InMemoryDashboardRuntimeRepository,
@@ -90,7 +92,13 @@ export type {
   Codec8ExtendedDecodeResult,
   DecodedCodec8ExtendedPacket
 } from "./codec8-extended-decoder";
-export type { LiveSessionLogger, LiveSessionOptions, LiveSessionResult } from "./live-session";
+export type {
+  LiveSessionConfiguration,
+  LiveSessionLogger,
+  LiveSessionOptions,
+  LiveSessionRecordAcceptedContext,
+  LiveSessionResult,
+} from "./live-session";
 export type {
   MultiDeviceRuntimeDeviceResult,
   MultiDeviceRuntimeOptions,
@@ -99,6 +107,7 @@ export type {
 export type { DashboardConfig, SimulatorConfig } from "./config";
 export type {
   DashboardDeviceConfig,
+  DashboardConfigRevision,
   DashboardDeviceRecord,
   DashboardDomainErrorCode,
   DashboardLogContextValue,
@@ -106,6 +115,10 @@ export type {
   DashboardLogEventType,
   DashboardLogSeverity,
   DashboardPosition,
+  DashboardTelemetryField,
+  DashboardTelemetryGroup,
+  DashboardTelemetrySnapshot,
+  DashboardTelemetryValue,
   DashboardRunOverview,
   DashboardRunRecord,
   DashboardRunStatus,
@@ -117,6 +130,7 @@ export type {
   SimulationClock,
   SimulationClockOptions,
   VehicleSimulator,
+  VehicleSimulatorCheckpoint,
   VehicleSimulatorOptions
 } from "./simulation";
 export {

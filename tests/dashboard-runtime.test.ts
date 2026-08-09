@@ -7,6 +7,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 
 import {
   InMemoryDashboardDeviceRepository,
+  InMemoryDashboardJourneyRepository,
   InMemoryDashboardLogRepository,
   InMemoryDashboardPositionRepository,
   InMemoryDashboardRuntimeRepository,
@@ -23,6 +24,7 @@ const routeFile = join(__dirname, "fixtures", "city-loop.route.json");
 describe("dashboard runtime api", () => {
   let server: DashboardServer;
   let deviceRepository: InMemoryDashboardDeviceRepository;
+  let journeyRepository: InMemoryDashboardJourneyRepository;
   let runtimeRepository: InMemoryDashboardRuntimeRepository;
   let logRepository: InMemoryDashboardLogRepository;
   let positionRepository: InMemoryDashboardPositionRepository;
@@ -46,6 +48,7 @@ describe("dashboard runtime api", () => {
 
     server = await startDashboardServer({ host: "127.0.0.1", port: 0 });
     deviceRepository = server.app.get(InMemoryDashboardDeviceRepository);
+    journeyRepository = server.app.get(InMemoryDashboardJourneyRepository);
     runtimeRepository = server.app.get(InMemoryDashboardRuntimeRepository);
     logRepository = server.app.get(InMemoryDashboardLogRepository);
     positionRepository = server.app.get(InMemoryDashboardPositionRepository);
@@ -53,6 +56,7 @@ describe("dashboard runtime api", () => {
 
   beforeEach(() => {
     deviceRepository.clear();
+    journeyRepository.clear();
     runtimeRepository.clear();
     logRepository.clear();
     positionRepository.clear();
@@ -151,9 +155,186 @@ describe("dashboard runtime api", () => {
       rawHex: expect.stringMatching(/^[0-9a-f]+$/),
       record: { gps: { satellites: 12 } },
     });
+    expect(logRepository.list({ imei, type: "avlPacketSent" })[0]?.telemetry).toMatchObject({
+      groups: expect.arrayContaining([
+        expect.objectContaining({
+          key: "gps",
+          fields: expect.arrayContaining([
+            expect.objectContaining({ key: "speed", unit: "km/h" }),
+          ]),
+        }),
+        expect.objectContaining({
+          key: "power",
+          fields: expect.arrayContaining([
+            expect.objectContaining({ key: "externalVoltage", displayValue: "13.8 V", ioId: 66 }),
+          ]),
+        }),
+      ]),
+    });
   });
 
-  it("starts selected devices and stop-all stops each active run", async () => {
+  it("resumes the same trip after stop without returning to its first point", async () => {
+    const backend = await useBackend();
+    const imei = "131313131313131";
+    await createDevice({
+      imei,
+      label: "Resume Device",
+      host: backend.tcpAddress.address,
+      port: backend.tcpAddress.port,
+      packetCount: 100,
+    });
+
+    await fetch(`${server.url}/api/runtime/devices/${imei}/start`, { method: "POST" });
+    await waitFor(() => positionRepository.list(imei).length >= 2);
+    const stopResponse = await fetch(`${server.url}/api/runtime/devices/${imei}/stop`, {
+      method: "POST",
+    });
+    expect(stopResponse.status).toBe(200);
+
+    const beforeResume = positionRepository.list(imei);
+    const lastBeforeResume = beforeResume.at(-1)!;
+    await fetch(`${server.url}/api/runtime/devices/${imei}/start`, { method: "POST" });
+    await waitFor(() => positionRepository.list(imei).length > beforeResume.length);
+
+    const firstAfterResume = positionRepository.list(imei)[beforeResume.length]!;
+    expect(firstAfterResume.tripId).toBe(lastBeforeResume.tripId);
+    expect(firstAfterResume.timestampMs).toBeGreaterThan(lastBeforeResume.timestampMs);
+  });
+
+  it("starts a new trip after a completed journey", async () => {
+    const backend = await useBackend();
+    const imei = "151515151515151";
+    await createDevice({
+      imei,
+      label: "Completed Journey Device",
+      host: backend.tcpAddress.address,
+      port: backend.tcpAddress.port,
+      packetCount: 1,
+    });
+
+    await fetch(`${server.url}/api/runtime/devices/${imei}/start`, { method: "POST" });
+    await waitFor(() => runtimeRepository.get(imei)?.status === "completed");
+    const firstTripId = positionRepository.list(imei)[0]?.tripId;
+
+    await fetch(`${server.url}/api/runtime/devices/${imei}/start`, { method: "POST" });
+    await waitFor(() => positionRepository.list(imei).length === 2);
+
+    expect(firstTripId).toBeTruthy();
+    expect(positionRepository.list(imei)[1]?.tripId).not.toBe(firstTripId);
+  });
+
+  it("starts a new trip after changing the route while stopped", async () => {
+    const backend = await useBackend();
+    const imei = "161616161616161";
+    await createDevice({
+      imei,
+      label: "Route Change Device",
+      host: backend.tcpAddress.address,
+      port: backend.tcpAddress.port,
+      packetCount: 100,
+    });
+
+    await fetch(`${server.url}/api/runtime/devices/${imei}/start`, { method: "POST" });
+    await waitFor(() => positionRepository.list(imei).length > 0);
+    await fetch(`${server.url}/api/runtime/devices/${imei}/stop`, { method: "POST" });
+    const firstTripId = positionRepository.list(imei).at(-1)?.tripId;
+    const current = deviceRepository.get(imei)!;
+
+    const updateResponse = await fetch(`${server.url}/api/devices/${imei}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        config: { ...current.config, routeFile: "" },
+      }),
+    });
+    expect(updateResponse.status).toBe(200);
+
+    const pointCount = positionRepository.list(imei).length;
+    await fetch(`${server.url}/api/runtime/devices/${imei}/start`, { method: "POST" });
+    await waitFor(() => positionRepository.list(imei).length > pointCount);
+    expect(positionRepository.list(imei)[pointCount]?.tripId).not.toBe(firstTripId);
+  });
+
+  it("applies live configuration as a new revision on the next accepted point", async () => {
+    const backend = await useBackend();
+    const imei = "141414141414141";
+    await createDevice({
+      imei,
+      label: "Live Config Device",
+      host: backend.tcpAddress.address,
+      port: backend.tcpAddress.port,
+      packetCount: 100,
+    });
+
+    await fetch(`${server.url}/api/runtime/devices/${imei}/start`, { method: "POST" });
+    await waitFor(() => positionRepository.list(imei).some((point) => point.configRevision === 1));
+
+    const updateResponse = await fetch(`${server.url}/api/devices/${imei}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        config: {
+          host: backend.tcpAddress.address,
+          port: backend.tcpAddress.port,
+          intervalMs: 15,
+          reconnectDelayMs: 25,
+          routeFile,
+          drivingStyle: "aggressive",
+          seed: 8,
+          deviceProfile: "fmc650-fms",
+          packetCount: 100,
+        },
+      }),
+    });
+    expect(updateResponse.status).toBe(200);
+    await expect(updateResponse.json()).resolves.toMatchObject({
+      device: { configRevision: 2 },
+    });
+
+    await waitFor(() => positionRepository.list(imei).some((point) => point.configRevision === 2));
+    const response = await fetch(`${server.url}/api/status/positions/${imei}`);
+    const body = await response.json() as { positions: Array<{ configRevision: number }>; configRevisions: Array<{ configRevision: number }> };
+    expect(body.positions.map((point) => point.configRevision)).toContain(2);
+    expect(body.configRevisions).toEqual(expect.arrayContaining([
+      expect.objectContaining({ configRevision: 1 }),
+      expect.objectContaining({
+        configRevision: 2,
+        changedFields: expect.arrayContaining(["intervalMs", "drivingStyle", "seed", "deviceProfile"]),
+      }),
+    ]));
+  });
+
+  it("does not persist an unacknowledged record when stopped while awaiting ACK", async () => {
+    const noAckServer = await useNoAckServer();
+    const address = noAckServer.tcpServer.address();
+    if (!address || typeof address === "string") {
+      throw new Error("Expected tcp server address.");
+    }
+    const imei = "171717171717171";
+    await createDevice({
+      imei,
+      label: "Awaiting ACK Device",
+      host: "127.0.0.1",
+      port: address.port,
+      packetCount: 100,
+    });
+
+    await fetch(`${server.url}/api/runtime/devices/${imei}/start`, { method: "POST" });
+    await waitFor(noAckServer.hasPacket);
+    const stopResponse = await fetch(`${server.url}/api/runtime/devices/${imei}/stop`, {
+      method: "POST",
+    });
+
+    expect(stopResponse.status).toBe(200);
+    expect(positionRepository.list(imei)).toEqual([]);
+    expect(journeyRepository.get(imei)).toMatchObject({
+      acceptedRecordCount: 0,
+      completed: false,
+    });
+    expect(journeyRepository.get(imei)?.checkpoint).toBeUndefined();
+  });
+
+  it("starts selected devices and lets start-all immediately resume after stop-all", async () => {
     const backend = await useBackend();
     const imeis = ["111111111111111", "222222222222222"];
 
@@ -187,7 +368,13 @@ describe("dashboard runtime api", () => {
       results: imeis.map((imei) => ({ imei, status: "stopped" })),
     });
 
-    await waitFor(() => imeis.every((imei) => runtimeRepository.get(imei)?.status === "stopped"));
+    const restartAllResponse = await fetch(`${server.url}/api/runtime/start-all`, {
+      method: "POST",
+    });
+    expect(restartAllResponse.status).toBe(200);
+    await expect(restartAllResponse.json()).resolves.toMatchObject({
+      results: imeis.map((imei) => ({ imei, status: "started" })),
+    });
   });
 
   it("starts every inactive device and skips active devices", async () => {
@@ -251,10 +438,19 @@ describe("dashboard runtime api", () => {
 
     await waitFor(() => runtimeRepository.get(imei)?.status === "rejected");
     expect(logRepository.list({ imei }).some((event) => event.type === "imeiRejected")).toBe(true);
+    const rejectedTrip = journeyRepository.get(imei);
+
+    await fetch(`${server.url}/api/runtime/devices/${imei}/start`, { method: "POST" });
+    await waitFor(() => logRepository.list({ imei, type: "imeiRejected" }).length === 2);
+    expect(journeyRepository.get(imei)).toMatchObject({
+      tripId: rejectedTrip?.tripId,
+      acceptedRecordCount: 0,
+      completed: false,
+    });
   });
 
-  it("marks runs as failed on non-reconnectable session errors", async () => {
-    const serverWithBadAck = await useBadAckServer();
+  it("preserves the last acknowledged checkpoint when a run fails", async () => {
+    const serverWithBadAck = await useAckThenBadAckServer();
     const address = serverWithBadAck.address();
     if (!address || typeof address === "string") {
       throw new Error("Expected tcp server address.");
@@ -277,6 +473,24 @@ describe("dashboard runtime api", () => {
     await waitFor(() => runtimeRepository.get(imei)?.status === "failed");
     expect(runtimeRepository.get(imei)?.lastError).toBeTruthy();
     expect(logRepository.list({ imei }).some((event) => event.type === "runFailed")).toBe(true);
+    const failedJourney = journeyRepository.get(imei);
+    expect(failedJourney).toMatchObject({
+      acceptedRecordCount: 1,
+      completed: false,
+      checkpoint: expect.any(Object),
+    });
+
+    const failureLogCount = logRepository.list({ imei, type: "runFailed" }).length;
+    await fetch(`${server.url}/api/runtime/devices/${imei}/start`, { method: "POST" });
+    await waitFor(() =>
+      runtimeRepository.get(imei)?.status === "failed"
+      && logRepository.list({ imei, type: "runFailed" }).length > failureLogCount,
+    );
+    expect(journeyRepository.get(imei)).toMatchObject({
+      tripId: failedJourney?.tripId,
+      acceptedRecordCount: 1,
+      checkpoint: failedJourney?.checkpoint,
+    });
   });
 
   it("records reconnect attempts without logging a premature failure", async () => {
@@ -666,7 +880,8 @@ describe("dashboard runtime api", () => {
     return backend;
   }
 
-  async function useBadAckServer(): Promise<Server> {
+  async function useAckThenBadAckServer(): Promise<Server> {
+    let packetCount = 0;
     const tcpServer = createServer((socket) => {
       let handshakeAccepted = false;
 
@@ -678,7 +893,10 @@ describe("dashboard runtime api", () => {
         }
 
         if (chunk.length > 0) {
-          socket.write(Buffer.from([0x00, 0x00, 0x00, 0x00]));
+          packetCount += 1;
+          socket.write(Buffer.from(packetCount === 1
+            ? [0x00, 0x00, 0x00, 0x01]
+            : [0x00, 0x00, 0x00, 0x00]));
         }
       });
 
@@ -698,6 +916,42 @@ describe("dashboard runtime api", () => {
 
     extraServers.push(tcpServer);
     return tcpServer;
+  }
+
+  async function useNoAckServer(): Promise<{
+    tcpServer: Server;
+    hasPacket: () => boolean;
+  }> {
+    let packetReceived = false;
+    const tcpServer = createServer((socket) => {
+      let handshakeAccepted = false;
+
+      socket.on("data", (chunk) => {
+        if (!handshakeAccepted) {
+          handshakeAccepted = true;
+          socket.write(Buffer.from([0x01]));
+          return;
+        }
+
+        if (chunk.length > 0) {
+          packetReceived = true;
+        }
+      });
+      socket.on("error", () => {});
+    });
+
+    await new Promise<void>((resolveListen, rejectListen) => {
+      tcpServer.listen(0, "127.0.0.1", (error?: Error) => {
+        if (error) {
+          rejectListen(error);
+          return;
+        }
+        resolveListen();
+      });
+    });
+
+    extraServers.push(tcpServer);
+    return { tcpServer, hasPacket: () => packetReceived };
   }
 
 async function createDevice(input: {

@@ -8,6 +8,8 @@ import {
 } from "../domain";
 import {
   InMemoryDashboardDeviceRepository,
+  InMemoryDashboardConfigRevisionRepository,
+  InMemoryDashboardJourneyRepository,
   InMemoryDashboardLogRepository,
   InMemoryDashboardPositionRepository,
   InMemoryDashboardRuntimeRepository,
@@ -35,6 +37,10 @@ export class StatusService {
   constructor(
     @Inject(InMemoryDashboardDeviceRepository)
     private readonly deviceRepository: InMemoryDashboardDeviceRepository,
+    @Inject(InMemoryDashboardConfigRevisionRepository)
+    private readonly configRevisionRepository: InMemoryDashboardConfigRevisionRepository,
+    @Inject(InMemoryDashboardJourneyRepository)
+    private readonly journeyRepository: InMemoryDashboardJourneyRepository,
     @Inject(InMemoryDashboardRuntimeRepository)
     private readonly runtimeRepository: InMemoryDashboardRuntimeRepository,
     @Inject(InMemoryDashboardLogRepository)
@@ -86,7 +92,11 @@ export class StatusService {
   }
 
   listPositions(imei?: string) {
-    return this.positionRepository.list(imei);
+    const positions = this.positionRepository.list(imei);
+    return {
+      positions,
+      configRevisions: this.configRevisionRepository.listReferenced(positions),
+    };
   }
 
   clearDashboardState(): void {
@@ -103,6 +113,8 @@ export class StatusService {
     this.runtimeRepository.clear();
     this.logRepository.clear();
     this.positionRepository.clear();
+    this.configRevisionRepository.clear();
+    this.journeyRepository.clear();
   }
 
   private toDeviceStatus(

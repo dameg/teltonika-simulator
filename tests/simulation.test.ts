@@ -102,6 +102,52 @@ describe("vehicle movement simulation", () => {
     expect(states(first, 20)).toEqual(states(second, 20));
   });
 
+  it("resumes from a JSON-serializable checkpoint without changing the sequence", () => {
+    const route = loadRouteFromFile(join(fixturesDir, "city-loop.route.json"));
+    const options = { route, drivingStyle: "normal", seed: 99, startTimestampMs: 1_700_000_000_000, intervalMs: 1000 } as const;
+    const uninterrupted = createVehicleSimulator(options);
+    const expected = states(uninterrupted, 20);
+    const stopped = createVehicleSimulator(options);
+
+    expect(states(stopped, 8)).toEqual(expected.slice(0, 8));
+    const checkpoint = JSON.parse(JSON.stringify(stopped.getCheckpoint()));
+    const resumed = createVehicleSimulator({ ...options, checkpoint });
+
+    expect(states(resumed, 12)).toEqual(expected.slice(8));
+    expect(() => createVehicleSimulator({
+      ...options,
+      checkpoint: { ...checkpoint, routeId: "another-route" }
+    })).toThrow("does not match simulation route");
+  });
+
+  it("updates dynamic parameters without resetting position or timestamp continuity", () => {
+    const route = loadRouteFromFile(join(fixturesDir, "city-loop.route.json"));
+    const simulator = createVehicleSimulator({
+      route,
+      drivingStyle: "normal",
+      seed: 99,
+      startTimestampMs: 1_700_000_000_000,
+      intervalMs: 1000
+    });
+    const first = simulator.next();
+
+    simulator.updateConfiguration({
+      intervalMs: 500,
+      simulationSpeed: 2,
+      drivingStyle: "aggressive",
+      seed: 100,
+      externalVoltageMv: 24_000,
+      batteryVoltageMv: undefined
+    });
+    const second = simulator.next();
+
+    expect(second.timestampMs - first.timestampMs).toBe(1_000);
+    expect(second.tripDistanceMeters).toBeGreaterThanOrEqual(first.tripDistanceMeters);
+    expect(second.position).not.toEqual(route.points[0]);
+    expect(second.externalVoltageMv).toBe(24_000);
+    expect(second).not.toHaveProperty("batteryVoltageMv");
+  });
+
   it("applies driving-style differences to speed, acceleration, braking, idling, and harsh events", () => {
     const route = loadRouteFromFile(join(fixturesDir, "city-loop.route.json"));
     const baseOptions = { route, seed: 11, startTimestampMs: 1_700_000_000_000, intervalMs: 1000 } as const;

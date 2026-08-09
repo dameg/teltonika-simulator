@@ -99,7 +99,7 @@ describe("dashboard device management API", () => {
     expect(emptyListBody.devices).toHaveLength(0);
   });
 
-  it("blocks updates and deletes while a device is running", async () => {
+  it("allows live configuration updates but blocks transport changes and deletion", async () => {
     await fetch(`${server.url}/api/devices`, {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -119,13 +119,33 @@ describe("dashboard device management API", () => {
     const updateResponse = await fetch(`${server.url}/api/devices/999999999999999`, {
       method: "PATCH",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ label: "Should Fail" })
+      body: JSON.stringify({
+        label: "Updated while running",
+        config: { ...createDeviceConfig(), intervalMs: 2_000, drivingStyle: "eco" },
+      })
     });
 
-    expect(updateResponse.status).toBe(409);
+    expect(updateResponse.status).toBe(200);
     const updateBody = await updateResponse.json();
-    expect(updateBody.error).toMatchObject({
-      code: "DEVICE_RUNNING"
+    expect(updateBody.device).toMatchObject({
+      label: "Updated while running",
+      configRevision: 2,
+      config: { intervalMs: 2_000, drivingStyle: "eco" },
+    });
+
+    const lockedResponse = await fetch(`${server.url}/api/devices/999999999999999`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        config: { ...createDeviceConfig(), host: "example.invalid" },
+      }),
+    });
+
+    expect(lockedResponse.status).toBe(409);
+    const lockedBody = await lockedResponse.json();
+    expect(lockedBody.error).toMatchObject({
+      code: "ACTIVE_CONFIG_FIELD_LOCKED",
+      fields: ["host"],
     });
 
     const deleteResponse = await fetch(`${server.url}/api/devices/999999999999999`, {

@@ -9,6 +9,8 @@ import {
 } from "../domain";
 import {
   InMemoryDashboardDeviceRepository,
+  InMemoryDashboardConfigRevisionRepository,
+  InMemoryDashboardJourneyRepository,
   InMemoryDashboardLogRepository,
   InMemoryDashboardPositionRepository,
   InMemoryDashboardRuntimeRepository,
@@ -17,6 +19,14 @@ import {
 } from "../repositories";
 
 const activeStatuses = new Set(["starting", "running", "reconnecting"]);
+const activeConfigFields = new Set<keyof DashboardDeviceConfig>([
+  "intervalMs",
+  "simulationSpeed",
+  "drivingStyle",
+  "seed",
+  "deviceProfile",
+  "packetCount",
+]);
 
 type DeviceConfigInput = {
   host: unknown;
@@ -41,11 +51,25 @@ class DeviceStateConflictError extends Error {
   }
 }
 
+class ActiveConfigFieldLockedError extends Error {
+  constructor(
+    readonly imei: string,
+    readonly fields: readonly string[],
+  ) {
+    super(`Active device ${imei} cannot change: ${fields.join(", ")}`);
+    this.name = "ActiveConfigFieldLockedError";
+  }
+}
+
 @Injectable()
 export class DeviceManagementService {
   constructor(
     @Inject(InMemoryDashboardDeviceRepository)
     private readonly deviceRepository: InMemoryDashboardDeviceRepository,
+    @Inject(InMemoryDashboardConfigRevisionRepository)
+    private readonly configRevisionRepository: InMemoryDashboardConfigRevisionRepository,
+    @Inject(InMemoryDashboardJourneyRepository)
+    private readonly journeyRepository: InMemoryDashboardJourneyRepository,
     @Inject(InMemoryDashboardRuntimeRepository)
     private readonly runtimeRepository: InMemoryDashboardRuntimeRepository,
     @Inject(InMemoryDashboardLogRepository)
@@ -65,21 +89,57 @@ export class DeviceManagementService {
       config: this.parseDeviceConfig(payload.config)
     } satisfies CreateDashboardDeviceInput);
 
+    this.configRevisionRepository.append({
+      imei: device.imei,
+      configRevision: device.configRevision,
+      createdAtMs: device.createdAtMs,
+      changedFields: [],
+      config: device.config,
+    });
+
     return device;
   }
 
   updateDevice(imei: string, payload: Record<string, unknown>): DashboardDeviceRecord {
-    const normalizedImei = this.requireMutableDevice(imei);
+    const current = this.getDeviceOrThrow(imei);
+    const run = this.runtimeRepository.get(current.imei);
+    const isActive = run !== undefined && activeStatuses.has(run.status);
     const patch: UpdateDashboardDeviceInput = {};
+    let changedConfigFields: Array<keyof DashboardDeviceConfig> = [];
 
     if (payload.label !== undefined) {
       patch.label = this.parseRequiredString(payload.label, "label");
     }
     if (payload.config !== undefined) {
-      patch.config = this.parseDeviceConfig(payload.config);
+      const config = this.parseDeviceConfig(payload.config);
+      changedConfigFields = configKeys.filter((key) => config[key] !== current.config[key]);
+      const lockedFields = changedConfigFields.filter((field) => !activeConfigFields.has(field));
+
+      if (isActive && lockedFields.length > 0) {
+        throw new ActiveConfigFieldLockedError(current.imei, lockedFields);
+      }
+
+      if (changedConfigFields.length > 0) {
+        patch.config = config;
+        patch.configRevision = current.configRevision + 1;
+      }
     }
 
-    return this.deviceRepository.update(normalizedImei, patch);
+    const updated = this.deviceRepository.update(current.imei, patch);
+    if (changedConfigFields.length > 0) {
+      this.configRevisionRepository.append({
+        imei: updated.imei,
+        configRevision: updated.configRevision,
+        changedFields: changedConfigFields,
+        config: updated.config,
+      });
+
+      if (changedConfigFields.includes("routeFile")) {
+        this.journeyRepository.delete(updated.imei);
+      }
+    }
+
+    return updated;
   }
 
   deleteDevice(imei: string): void {
@@ -88,6 +148,17 @@ export class DeviceManagementService {
     this.logRepository.clearByDevice(normalizedImei);
     this.runtimeRepository.delete(normalizedImei);
     this.positionRepository.clearByDevice(normalizedImei);
+    this.configRevisionRepository.clearByDevice(normalizedImei);
+    this.journeyRepository.delete(normalizedImei);
+  }
+
+  private getDeviceOrThrow(imei: string): DashboardDeviceRecord {
+    const device = this.deviceRepository.get(imei);
+    if (!device) {
+      throw new DashboardDomainError("DEVICE_NOT_FOUND", `Device not found: ${imei.trim()}`);
+    }
+
+    return device;
   }
 
   private requireMutableDevice(imei: string): string {
@@ -182,10 +253,27 @@ export class DeviceManagementService {
   }
 }
 
+const configKeys: Array<keyof DashboardDeviceConfig> = [
+  "host",
+  "port",
+  "intervalMs",
+  "simulationSpeed",
+  "reconnectDelayMs",
+  "routeFile",
+  "drivingStyle",
+  "seed",
+  "deviceProfile",
+  "packetCount",
+];
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 export function isDeviceStateConflictError(error: unknown): error is DeviceStateConflictError {
   return error instanceof DeviceStateConflictError;
+}
+
+export function isActiveConfigFieldLockedError(error: unknown): error is ActiveConfigFieldLockedError {
+  return error instanceof ActiveConfigFieldLockedError;
 }

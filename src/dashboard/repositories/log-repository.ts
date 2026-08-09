@@ -65,5 +65,6 @@ function cloneLogEvent(event: DashboardLogEvent): DashboardLogEvent {
         }
       : undefined,
     data: event.data === undefined ? undefined : structuredClone(event.data),
+    telemetry: event.telemetry === undefined ? undefined : structuredClone(event.telemetry),
   };
 }
