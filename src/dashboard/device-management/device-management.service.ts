@@ -1,4 +1,5 @@
 import { Inject, Injectable } from "@nestjs/common";
+import { randomUUID } from "node:crypto";
 
 import { getDeviceProfile } from "../../device-profile";
 import { parseDrivingStyleName } from "../../driving-style";
@@ -8,15 +9,11 @@ import {
   type DashboardDeviceRecord
 } from "../domain";
 import {
-  InMemoryDashboardDeviceRepository,
-  InMemoryDashboardConfigRevisionRepository,
-  InMemoryDashboardJourneyRepository,
-  InMemoryDashboardLogRepository,
-  InMemoryDashboardPositionRepository,
-  InMemoryDashboardRuntimeRepository,
   type CreateDashboardDeviceInput,
   type UpdateDashboardDeviceInput
 } from "../repositories";
+import { DASHBOARD_STORE, type DashboardStore } from "../persistence/dashboard-store";
+import { RuntimeConfigRegistry } from "../runtime/runtime-config-registry";
 
 const activeStatuses = new Set(["starting", "running", "reconnecting"]);
 const activeConfigFields = new Set<keyof DashboardDeviceConfig>([
@@ -64,45 +61,36 @@ class ActiveConfigFieldLockedError extends Error {
 @Injectable()
 export class DeviceManagementService {
   constructor(
-    @Inject(InMemoryDashboardDeviceRepository)
-    private readonly deviceRepository: InMemoryDashboardDeviceRepository,
-    @Inject(InMemoryDashboardConfigRevisionRepository)
-    private readonly configRevisionRepository: InMemoryDashboardConfigRevisionRepository,
-    @Inject(InMemoryDashboardJourneyRepository)
-    private readonly journeyRepository: InMemoryDashboardJourneyRepository,
-    @Inject(InMemoryDashboardRuntimeRepository)
-    private readonly runtimeRepository: InMemoryDashboardRuntimeRepository,
-    @Inject(InMemoryDashboardLogRepository)
-    private readonly logRepository: InMemoryDashboardLogRepository,
-    @Inject(InMemoryDashboardPositionRepository)
-    private readonly positionRepository: InMemoryDashboardPositionRepository,
+    @Inject(DASHBOARD_STORE)
+    private readonly store: DashboardStore,
+    @Inject(RuntimeConfigRegistry)
+    private readonly runtimeConfigs: RuntimeConfigRegistry,
   ) {}
 
-  listDevices(): DashboardDeviceRecord[] {
-    return this.deviceRepository.list();
+  listDevices(): Promise<DashboardDeviceRecord[]> {
+    return this.store.listDevices();
   }
 
-  createDevice(payload: Record<string, unknown>): DashboardDeviceRecord {
-    const device = this.deviceRepository.create({
+  async createDevice(payload: Record<string, unknown>): Promise<DashboardDeviceRecord> {
+    const device = await this.store.createDevice({
       imei: this.parseRequiredString(payload.imei, "imei"),
       label: this.parseRequiredString(payload.label, "label"),
       config: this.parseDeviceConfig(payload.config)
     } satisfies CreateDashboardDeviceInput);
-
-    this.configRevisionRepository.append({
+    await this.store.appendLog({
+      id: randomUUID(),
       imei: device.imei,
-      configRevision: device.configRevision,
-      createdAtMs: device.createdAtMs,
-      changedFields: [],
-      config: device.config,
+      severity: "info",
+      type: "deviceCreated",
+      message: `Device ${device.imei} created.`,
+      timestampMs: Date.now(),
     });
-
     return device;
   }
 
-  updateDevice(imei: string, payload: Record<string, unknown>): DashboardDeviceRecord {
-    const current = this.getDeviceOrThrow(imei);
-    const run = this.runtimeRepository.get(current.imei);
+  async updateDevice(imei: string, payload: Record<string, unknown>): Promise<DashboardDeviceRecord> {
+    const current = await this.getDeviceOrThrow(imei);
+    const run = await this.store.getRun(current.imei);
     const isActive = run !== undefined && activeStatuses.has(run.status);
     const patch: UpdateDashboardDeviceInput = {};
     let changedConfigFields: Array<keyof DashboardDeviceConfig> = [];
@@ -122,38 +110,47 @@ export class DeviceManagementService {
       if (changedConfigFields.length > 0) {
         patch.config = config;
         patch.configRevision = current.configRevision + 1;
+        patch.changedConfigFields = changedConfigFields;
       }
     }
 
-    const updated = this.deviceRepository.update(current.imei, patch);
+    const updated = await this.store.updateDevice(current.imei, patch);
+    if (isActive) this.runtimeConfigs.set(updated);
     if (changedConfigFields.length > 0) {
-      this.configRevisionRepository.append({
-        imei: updated.imei,
-        configRevision: updated.configRevision,
-        changedFields: changedConfigFields,
-        config: updated.config,
-      });
-
       if (changedConfigFields.includes("routeFile")) {
-        this.journeyRepository.delete(updated.imei);
+        await this.store.finishJourney(updated.imei, false);
       }
     }
+
+    await this.store.appendLog({
+      id: randomUUID(),
+      imei: updated.imei,
+      severity: "info",
+      type: "deviceUpdated",
+      message: `Device ${updated.imei} updated.`,
+      timestampMs: Date.now(),
+      context: { configRevision: updated.configRevision },
+    });
 
     return updated;
   }
 
-  deleteDevice(imei: string): void {
-    const normalizedImei = this.requireMutableDevice(imei);
-    this.deviceRepository.delete(normalizedImei);
-    this.logRepository.clearByDevice(normalizedImei);
-    this.runtimeRepository.delete(normalizedImei);
-    this.positionRepository.clearByDevice(normalizedImei);
-    this.configRevisionRepository.clearByDevice(normalizedImei);
-    this.journeyRepository.delete(normalizedImei);
+  async deleteDevice(imei: string): Promise<void> {
+    const normalizedImei = await this.requireMutableDevice(imei);
+    await this.store.appendLog({
+      id: randomUUID(),
+      imei: normalizedImei,
+      severity: "info",
+      type: "deviceDeleted",
+      message: `Device ${normalizedImei} archived.`,
+      timestampMs: Date.now(),
+    });
+    await this.store.archiveDevice(normalizedImei);
+    await this.store.finishJourney(normalizedImei, false);
   }
 
-  private getDeviceOrThrow(imei: string): DashboardDeviceRecord {
-    const device = this.deviceRepository.get(imei);
+  private async getDeviceOrThrow(imei: string): Promise<DashboardDeviceRecord> {
+    const device = await this.store.getDevice(imei);
     if (!device) {
       throw new DashboardDomainError("DEVICE_NOT_FOUND", `Device not found: ${imei.trim()}`);
     }
@@ -161,13 +158,13 @@ export class DeviceManagementService {
     return device;
   }
 
-  private requireMutableDevice(imei: string): string {
-    const device = this.deviceRepository.get(imei);
+  private async requireMutableDevice(imei: string): Promise<string> {
+    const device = await this.store.getDevice(imei);
     if (!device) {
       throw new DashboardDomainError("DEVICE_NOT_FOUND", `Device not found: ${imei.trim()}`);
     }
 
-    const run = this.runtimeRepository.get(device.imei);
+    const run = await this.store.getRun(device.imei);
     if (run && activeStatuses.has(run.status)) {
       throw new DeviceStateConflictError(device.imei, run.status);
     }

@@ -18,6 +18,8 @@ export interface UpdateDashboardDeviceInput
     Omit<DashboardDeviceRecord, "config" | "createdAtMs" | "imei" | "updatedAtMs">
   > {
   config?: Partial<DashboardDeviceConfig>;
+  /** Persisted adapters use this to create the matching immutable revision row. */
+  changedConfigFields?: string[];
 }
 
 export class InMemoryDashboardDeviceRepository {
@@ -63,9 +65,11 @@ export class InMemoryDashboardDeviceRepository {
       );
     }
 
+    const clonedPatch = cloneDevicePatch(patch);
+    delete clonedPatch.changedConfigFields;
     const next: DashboardDeviceRecord = {
       ...current,
-      ...cloneDevicePatch(patch),
+      ...clonedPatch,
       config: {
         ...current.config,
         ...(patch.config ?? {}),

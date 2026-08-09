@@ -29,6 +29,17 @@ export interface GroupedTracks<TPosition extends TrackPosition = TrackPosition> 
   pointCount: number;
 }
 
+export interface HistoryRecordPositionSource {
+  id: string;
+  timestampMs: number;
+  latitude: number;
+  longitude: number;
+  altitudeMeters: number;
+  headingDegrees: number;
+  speedKph: number;
+  satellites: number;
+}
+
 const GOLDEN_ANGLE_DEGREES = 137.507_764_05;
 
 export function visibleTrackImeis(
@@ -97,6 +108,37 @@ export function groupTracks<TPosition extends TrackPosition>(
   }
 
   return { segments: [...segmentsByKey.values()], trips, pointCount };
+}
+
+export function sampleTrackPositions<TPosition>(
+  positions: readonly TPosition[],
+  maximum: number,
+): readonly TPosition[] {
+  if (!Number.isInteger(maximum) || maximum < 2) {
+    throw new RangeError("maximum track points must be an integer of at least 2");
+  }
+  if (positions.length <= maximum) return positions;
+
+  const sampled: TPosition[] = [positions[0]!];
+  const step = (positions.length - 1) / (maximum - 1);
+  for (let index = 1; index < maximum - 1; index += 1) {
+    sampled.push(positions[Math.round(index * step)]!);
+  }
+  sampled.push(positions[positions.length - 1]!);
+  return sampled;
+}
+
+export function historyRecordsToTrackPositions<TRecord extends HistoryRecordPositionSource>(
+  records: readonly TRecord[],
+  imei: string,
+  tripId: string,
+): Array<TRecord & TrackPosition> {
+  return records.map((record) => ({
+    ...record,
+    imei,
+    tripId,
+    configRevision: 1,
+  }));
 }
 
 export function colorForRevision(imei: string, configRevision: number): string {

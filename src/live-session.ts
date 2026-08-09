@@ -13,8 +13,8 @@ import {
 import type { AvlRecord, DrivingStyleName } from "./domain";
 
 export interface LiveSessionLogger {
-  info(message: string): void;
-  error?(message: string): void;
+  info(message: string): void | Promise<void>;
+  error?(message: string): void | Promise<void>;
 }
 
 export interface LiveSessionOptions {
@@ -38,7 +38,7 @@ export interface LiveSessionOptions {
     record: AvlRecord,
     packetHex: string,
     context: LiveSessionRecordAcceptedContext
-  ) => void;
+  ) => void | Promise<void>;
 }
 
 export interface LiveSessionConfiguration {
@@ -136,7 +136,7 @@ export async function runLiveSession(options: LiveSessionOptions): Promise<LiveS
   while (true) {
     throwIfAborted(options.signal);
 
-    logger.info(`connect host=${options.host} port=${options.port} imei=${options.imei}`);
+    await logger.info(`connect host=${options.host} port=${options.port} imei=${options.imei}`);
 
     try {
       const result = await runConnectionAttempt(
@@ -144,7 +144,7 @@ export async function runLiveSession(options: LiveSessionOptions): Promise<LiveS
         sessionState,
       );
       if (result.kind === "reconnect") {
-        logger.info(
+        await logger.info(
           `reconnect delay-ms=${reconnectDelayMs} host=${options.host} port=${options.port} imei=${options.imei}`
         );
         await delayWithAbort(reconnectDelayMs, options.signal);
@@ -154,11 +154,11 @@ export async function runLiveSession(options: LiveSessionOptions): Promise<LiveS
       return result;
     } catch (error) {
       if (isAbortError(error) || options.signal?.aborted) {
-        logger.info(`shutdown imei=${options.imei}`);
+        await logger.info(`shutdown imei=${options.imei}`);
         return { kind: "completed" };
       }
 
-      logger.error?.(error instanceof Error ? error.message : String(error));
+      await logger.error?.(error instanceof Error ? error.message : String(error));
       throw error;
     }
   }
@@ -179,18 +179,15 @@ async function runConnectionAttempt(
       port: options.port,
       imei: options.imei,
       signal: options.signal,
-      onConnected: () => {
+      onConnected: () =>
         options.logger.info(
           `tcp connected host=${options.host} port=${options.port} imei=${options.imei}`
-        );
-      },
-      onImeiSent: () => {
-        options.logger.info(`imei sent imei=${options.imei}`);
-      }
+        ),
+      onImeiSent: () => options.logger.info(`imei sent imei=${options.imei}`),
     });
 
     if (handshake.kind === "rejected") {
-      options.logger.info(`imei rejected imei=${options.imei}`);
+      await options.logger.info(`imei rejected imei=${options.imei}`);
       return { kind: "rejected" };
     }
 
@@ -199,7 +196,7 @@ async function runConnectionAttempt(
       void closeSocket(handshake.socket);
     });
 
-    options.logger.info(`imei accepted imei=${options.imei}`);
+    await options.logger.info(`imei accepted imei=${options.imei}`);
 
     while (true) {
       throwIfAborted(options.signal);
@@ -225,12 +222,12 @@ async function runConnectionAttempt(
       const result = await sendAvlPacket(handshake.socket, [pendingRecord.record]);
       sessionState.acceptedRecordCount += result.acceptedRecordCount;
       sessionState.pendingRecord = null;
-      options.onRecordAccepted?.(pendingRecord.record, result.packetHex, {
+      await options.onRecordAccepted?.(pendingRecord.record, result.packetHex, {
         checkpoint: pendingRecord.checkpoint,
         acceptedRecordCount: sessionState.acceptedRecordCount,
         configuration: { ...pendingRecord.configuration }
       });
-      options.logger.info(
+      await options.logger.info(
         `avl sent imei=${options.imei} records=1 timestamp=${pendingRecord.record.timestampMs} ack=${result.acceptedRecordCount}`
       );
       applyCurrentConfiguration(options, sessionState);
@@ -246,7 +243,7 @@ async function runConnectionAttempt(
     }
 
     if (isReconnectableSessionError(error)) {
-      options.logger.info(
+      await options.logger.info(
         `connection lost imei=${options.imei} reason=${formatError(error)}`
       );
       return { kind: "reconnect" };

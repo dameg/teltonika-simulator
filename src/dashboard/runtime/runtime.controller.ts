@@ -54,9 +54,9 @@ export class RuntimeController {
     return this.execute(() => this.runtimeService.stopAllDevices());
   }
 
-  private execute<T>(operation: () => T): T {
+  private async execute<T>(operation: () => T | Promise<T>): Promise<T> {
     try {
-      return operation();
+      return await operation();
     } catch (error) {
       throw mapRuntimeError(error, this.runtimeService);
     }

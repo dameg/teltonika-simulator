@@ -39,6 +39,40 @@ describe("IMEI handshake session behavior", () => {
     expect(serverSocket.destroyed).toBe(false);
   });
 
+  it("awaits handshake callbacks in order before resolving acceptance", async () => {
+    const fixture = await useFixture({ imeiResponseByte: 0x01 });
+    const events: string[] = [];
+    let releaseConnected = () => {};
+    const connectedGate = new Promise<void>((resolve) => {
+      releaseConnected = resolve;
+    });
+
+    const resultPromise = performImeiHandshake({
+      host: fixture.host,
+      port: fixture.port,
+      imei: "123456789012345",
+      onConnected: async () => {
+        events.push("connected-start");
+        await connectedGate;
+        events.push("connected-finished");
+      },
+      onImeiSent: async () => {
+        await Promise.resolve();
+        events.push("imei-sent");
+      },
+    });
+
+    await fixture.waitForConnection();
+    await new Promise<void>((resolve) => setTimeout(resolve, 10));
+    expect(fixture.imeiFrames).toHaveLength(0);
+    releaseConnected();
+
+    const result = await resultPromise;
+    expect(events).toEqual(["connected-start", "connected-finished", "imei-sent"]);
+    expect(result.kind).toBe("accepted");
+    if (result.kind === "accepted") sockets.push(result.socket);
+  });
+
   it("stops the session on IMEI rejection without reconnecting", async () => {
     const fixture = await useFixture({ imeiResponseByte: 0x00 });
 

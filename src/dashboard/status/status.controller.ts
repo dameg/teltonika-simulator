@@ -23,14 +23,14 @@ export class StatusController {
   ) {}
 
   @Get("devices")
-  listDeviceStatuses() {
-    return { devices: this.statusService.listDeviceStatuses() };
+  async listDeviceStatuses() {
+    return { devices: await this.statusService.listDeviceStatuses() };
   }
 
   @Get("devices/:imei")
-  getDeviceStatus(@Param("imei") imei: string) {
+  async getDeviceStatus(@Param("imei") imei: string) {
     try {
-      return { device: this.statusService.getDeviceStatus(imei) };
+      return { device: await this.statusService.getDeviceStatus(imei) };
     } catch (error) {
       throw toHttpException(error);
     }
@@ -53,9 +53,9 @@ export class StatusController {
 
   @Delete("state")
   @HttpCode(204)
-  clearDashboardState() {
+  async clearDashboardState() {
     try {
-      this.statusService.clearDashboardState();
+      await this.statusService.clearDashboardState();
     } catch (error) {
       throw toHttpException(error);
     }

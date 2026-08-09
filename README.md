@@ -2,7 +2,8 @@
 
 A deterministic, multi-device Teltonika simulator with a local control dashboard, live OpenStreetMap tracking, reusable European road routes, and FMC650 FMS/J1939 telemetry.
 
-The simulator models a virtual vehicle first, maps its state to Teltonika AVL elements, encodes Codec 8 Extended packets, and sends them to an external TCP parser.
+The simulator first models a virtual vehicle. It maps the vehicle state to Teltonika AVL elements and encodes Codec 8 Extended packets.
+The simulator sends these packets to the durable dashboard parser or another configured TCP parser.
 
 ## Highlights
 
@@ -23,8 +24,16 @@ The simulator models a virtual vehicle first, maps its state to Teltonika AVL el
 
 ```bash
 npm install
+npm run db:up
+export DATABASE_URL=postgresql://teltonika:teltonika-local@127.0.0.1:5432/teltonika
+npm run db:migrate
 npm run dev
 ```
+
+PostgreSQL 17 runs in Docker and stores its data in the named
+`teltonika-postgres-data` volume. If you want different local credentials or a different port, copy `.env.example` to `.env`.
+Export the resulting `DATABASE_URL`
+before running migrations or the dashboard.
 
 `dev` builds the frontend automatically at startup and watches both
 the dashboard backend and frontend sources. Refresh the browser after a
@@ -39,7 +48,9 @@ Open:
 http://localhost:3000
 ```
 
-`npm run dev` also starts a local TCP parser at `127.0.0.1:5027`. Its raw parser view is available at `http://127.0.0.1:3001`.
+`npm run dev` also starts the durable TCP parser at `127.0.0.1:5027`.
+Frames, decode errors, trips, and telemetry are available in the unified
+dashboard and its `/api/frames`, `/api/trips`, and `/api/records` endpoints.
 
 ## Dashboard
 
@@ -54,7 +65,9 @@ The dashboard supports:
 - starting one device, selected devices, or every inactive device;
 - stopping sessions and monitoring lifecycle status;
 - viewing multiple live device tracks in different colors;
-- filtering logs and inspecting sent packets as JSON and `rawHex`.
+- filtering durable operational logs.
+- selecting stored trips, viewing their routes, and inspecting point telemetry.
+- auditing raw frames, decode results, and retransmission receptions through the history API.
 
 Default form values:
 
@@ -70,7 +83,39 @@ Default form values:
 | Simulation speed | `0` — real time |
 | Packet limit | `1000` |
 
-Dashboard devices, runtime state, logs, and position history are stored in process memory and are cleared when the application restarts.
+Dashboard devices, configuration history, trips, raw AVL frames, decoded AVL
+records, IO telemetry, and logs are stored in PostgreSQL and remain available
+after the application restarts. Clearing logs hides them from the dashboard
+without deleting the underlying audit data.
+
+## PostgreSQL
+
+Start the durable development database and apply pending migrations:
+
+```bash
+npm run db:up
+export DATABASE_URL=postgresql://teltonika:teltonika-local@127.0.0.1:5432/teltonika
+npm run db:migrate
+```
+
+Stop the containers without deleting the database volume:
+
+```bash
+npm run db:down
+```
+
+To run database integration tests against an isolated temporary instance:
+
+```bash
+npm run db:test:up
+export TEST_DATABASE_URL=postgresql://teltonika_test:teltonika-test@127.0.0.1:5433/teltonika_test
+npm run db:test:migrate
+export DATABASE_URL=$TEST_DATABASE_URL
+npm run test:integration
+```
+
+The `postgres-test` service uses a temporary filesystem. Its data disappears when the container is removed.
+CAUTION: If you want to keep the development database, do not run `docker compose down -v`. This command deletes the database volume.
 
 ## How It Works
 
@@ -90,10 +135,13 @@ route + driving style + seed + simulation speed
           Codec 8E + CRC + TCP frame
                        |
                        v
-             external parser + ACK
+       durable parser + PostgreSQL commit
                        |
                        v
-              dashboard logs and map
+                 device ACK
+                       |
+                       v
+       history API + dashboard logs/map
 ```
 
 Simulation, device mapping, protocol encoding, networking, and dashboard storage remain separate modules.
@@ -291,6 +339,7 @@ Live sessions reconnect after recoverable socket failures such as connection ref
 | TCP sessions | `src/imei-handshake.ts`, `src/avl-session.ts`, `src/live-session.ts` |
 | Multi-device runtime | `src/multi-device-runtime.ts` |
 | Dashboard API | `src/dashboard/` |
+| PostgreSQL persistence | `src/dashboard/persistence/`, `migrations/`, `compose.yaml` |
 | React dashboard and map | `src/dashboard/frontend/` |
 | Tests | `tests/` |
 
@@ -308,7 +357,7 @@ The test suite covers CRC, Codec 8E round trips, IMEI handshake, acknowledgement
 
 - TCP and Codec 8 Extended only;
 - no UDP or TLS;
-- no persistent database for devices, logs, or trips;
+- no built-in database backup or retention scheduler;
 - no server-to-device command simulation;
 - no route generator in the dashboard;
 - routes loop instead of completing at the destination;

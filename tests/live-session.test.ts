@@ -175,6 +175,45 @@ describe("live session runtime", () => {
     expect(fixture.avlFrames).toHaveLength(1);
   });
 
+  it("awaits asynchronous accepted-record persistence before completing the packet boundary", async () => {
+    const fixture = await useFixture();
+    let releasePersistence = () => {};
+    const persistenceGate = new Promise<void>((resolve) => {
+      releasePersistence = resolve;
+    });
+    let markPersistenceStarted = () => {};
+    const persistenceStarted = new Promise<void>((resolve) => {
+      markPersistenceStarted = resolve;
+    });
+
+    let completed = false;
+    const sessionPromise = runLiveSession({
+      host: fixture.host,
+      port: fixture.port,
+      imei: "123456789012345",
+      intervalMs: 5,
+      routeFile,
+      drivingStyle: "normal",
+      seed: 7,
+      deviceProfile: "default-codec8e",
+      packetCount: 1,
+      onRecordAccepted: async () => {
+        markPersistenceStarted();
+        await persistenceGate;
+      },
+    }).then((result) => {
+      completed = true;
+      return result;
+    });
+
+    await persistenceStarted;
+    await delay(25);
+    expect(completed).toBe(false);
+
+    releasePersistence();
+    await expect(sessionPromise).resolves.toEqual({ kind: "completed" });
+  });
+
   it("advances AVL record timestamps by the configured interval", async () => {
     const fixture = await useFixture();
     const controller = new AbortController();

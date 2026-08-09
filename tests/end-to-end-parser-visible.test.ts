@@ -4,20 +4,23 @@ import { createConnection, type Socket } from "node:net";
 import { dirname, resolve } from "node:path";
 import { join } from "node:path";
 
-import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import {
   createDryRunOutput,
   encodeImeiHandshakeFrame,
-  formatHttpUrl,
-  InMemoryDashboardLogRepository,
   parseConfig,
   startDashboardBackend,
   startDashboardServer,
   type DashboardBackend,
-  type DashboardServer,
-  type DashboardMessage
+  type DashboardServer
 } from "../src";
+import type {
+  FrameDecodeFailureInput,
+  FrameIngestInput,
+  FrameIngestStore,
+} from "../src/frame-ingest-store";
+import { DatabaseService } from "../src/dashboard/persistence/database.service";
 
 const frontendEntry = resolve(process.cwd(), "src/dashboard/frontend/main.tsx");
 const frontendOutfile = resolve(process.cwd(), "dist/dashboard/frontend/dashboard-app.js");
@@ -25,8 +28,9 @@ const routeFile = join(__dirname, "fixtures", "city-loop.route.json");
 
 describe("end-to-end parser-visible coverage", () => {
   const backends: DashboardBackend[] = [];
+  const stores = new WeakMap<DashboardBackend, RecordingFrameIngestStore>();
   let dashboardServer: DashboardServer;
-  let logRepository: InMemoryDashboardLogRepository;
+  let database: DatabaseService;
 
   beforeAll(async () => {
     await mkdir(dirname(frontendOutfile), { recursive: true });
@@ -43,8 +47,21 @@ describe("end-to-end parser-visible coverage", () => {
       logLevel: "silent"
     });
 
-    dashboardServer = await startDashboardServer({ host: "127.0.0.1", port: 0 });
-    logRepository = dashboardServer.app.get(InMemoryDashboardLogRepository);
+    dashboardServer = await startDashboardServer({
+      host: "127.0.0.1",
+      port: 0,
+      tcpHost: "127.0.0.1",
+      tcpPort: 0,
+      parserHealthHost: "127.0.0.1",
+      parserHealthPort: 0,
+    });
+    database = dashboardServer.app.get(DatabaseService);
+  });
+
+  beforeEach(async () => {
+    await database.query(`TRUNCATE dashboard_logs, avl_io_elements, avl_records,
+      avl_frame_receptions, avl_frames, runs, trips, device_config_revisions,
+      simulator_configs, devices RESTART IDENTITY CASCADE`);
   });
 
   afterEach(async () => {
@@ -55,8 +72,9 @@ describe("end-to-end parser-visible coverage", () => {
     await dashboardServer.close();
   });
 
-  it("surfaces accepted imei and decoded avl packets through the dashboard messages api", async () => {
+  it("persists decoded AVL packets before the simulator observes an acknowledgement", async () => {
     const backend = await useBackend();
+    const store = storeFor(backend);
     const imei = "123456789012345";
 
     const createResponse = await fetch(`${dashboardServer.url}/api/devices`, {
@@ -85,38 +103,22 @@ describe("end-to-end parser-visible coverage", () => {
     });
     expect(startResponse.status).toBe(200);
 
-    await waitFor(async () => {
-      const messages = await fetchMessages(backend);
-      return messages.some((message) => message.type === "avl");
-    }, 3_000);
+    await waitFor(() => store.frames.length > 0, 3_000);
 
-    const messages = await fetchMessages(backend);
-    expect(messages).toHaveLength(2);
-
-    const logTypes = logRepository.list({ imei }).map((event) => event.type);
+    const logResponse = await fetch(`${dashboardServer.url}/api/logs?imei=${imei}&limit=100`);
+    const logTypes = ((await logResponse.json()) as { events: Array<{ type: string }> })
+      .events.map((event) => event.type);
     expect(logTypes).toContain("tcpConnected");
     expect(logTypes).toContain("imeiSent");
     expect(logTypes).toContain("imeiAccepted");
 
-    const [imeiMessage, avlMessage] = messages;
-    expect(imeiMessage).toMatchObject({
-      type: "imei",
-      imei,
-      accepted: true
-    });
-    expect(imeiMessage?.rawHex).toBe(Buffer.from(encodeImeiHandshakeFrame(imei)).toString("hex"));
-
-    expect(avlMessage?.type).toBe("avl");
-    if (!avlMessage || avlMessage.type !== "avl") {
-      throw new Error("expected avl message");
-    }
-
-    expect(avlMessage.imei).toBe(imei);
-    expect(avlMessage.rawHex).toMatch(/^[0-9a-f]+$/);
-    expect(avlMessage.decoded.codecId).toBe(0x8e);
-    expect(avlMessage.decoded.recordCount).toBeGreaterThan(0);
-    expect(avlMessage.decoded.records[0]?.gps.longitude).toBeTypeOf("number");
-    expect(avlMessage.decoded.records[0]?.gps.latitude).toBeTypeOf("number");
+    const frame = store.frames[0];
+    expect(frame?.imei).toBe(imei);
+    expect(frame?.rawFrame.toString("hex")).toMatch(/^[0-9a-f]+$/);
+    expect(frame?.decoded.codecId).toBe(0x8e);
+    expect(frame?.decoded.recordCount).toBeGreaterThan(0);
+    expect(frame?.decoded.records[0]?.gps.longitude).toBeTypeOf("number");
+    expect(frame?.decoded.records[0]?.gps.latitude).toBeTypeOf("number");
 
     const stopResponse = await fetch(`${dashboardServer.url}/api/runtime/devices/${imei}/stop`, {
       method: "POST"
@@ -124,8 +126,9 @@ describe("end-to-end parser-visible coverage", () => {
     expect(stopResponse.status).toBe(200);
   });
 
-  it("surfaces malformed packets as parser-visible dashboard errors without duplicating parser logic", async () => {
+  it("audits malformed packets without acknowledging them", async () => {
     const backend = await useBackend();
+    const store = storeFor(backend);
     const socket = await connectSocket(backend.tcpAddress.address, backend.tcpAddress.port);
 
     try {
@@ -146,24 +149,13 @@ describe("end-to-end parser-visible coverage", () => {
       const malformedAck = await readBytesWithTimeout(socket, 4, 150);
       expect(malformedAck).toBeNull();
 
-      await waitFor(async () => {
-        const messages = await fetchMessages(backend);
-        return messages.length >= 3;
-      });
+      await waitFor(() => store.decodeFailures.length === 1);
 
-      const messages = await fetchMessages(backend);
-      expect(messages.map((message) => message.type)).toEqual(["imei", "avl", "error"]);
-
-      const errorMessage = messages[2];
-      expect(errorMessage?.type).toBe("error");
-      if (!errorMessage || errorMessage.type !== "error") {
-        throw new Error("expected error message");
-      }
-
-      expect(errorMessage.imei).toBe(imei);
-      expect(errorMessage.rawHex).toBe(malformedPacket.toString("hex"));
-      expect(errorMessage.error.kind).toBe("crc_mismatch");
-      expect(errorMessage.error.message).toContain("CRC");
+      const failure = store.decodeFailures[0];
+      expect(failure?.imei).toBe(imei);
+      expect(failure?.rawFrame.toString("hex")).toBe(malformedPacket.toString("hex"));
+      expect(failure?.error.kind).toBe("crc_mismatch");
+      expect(failure?.error.message).toContain("CRC");
     } finally {
       socket.destroy();
     }
@@ -179,17 +171,38 @@ describe("end-to-end parser-visible coverage", () => {
   });
 
   async function useBackend(): Promise<DashboardBackend> {
+    const store = new RecordingFrameIngestStore();
     const backend = await startDashboardBackend({
       host: "127.0.0.1",
       port: 0,
       webHost: "127.0.0.1",
       webPort: 0,
       acceptImei: true
-    });
+    }, store);
     backends.push(backend);
+    stores.set(backend, store);
     return backend;
   }
+
+  function storeFor(backend: DashboardBackend): RecordingFrameIngestStore {
+    const store = stores.get(backend);
+    if (!store) throw new Error("Missing test frame store.");
+    return store;
+  }
 });
+
+class RecordingFrameIngestStore implements FrameIngestStore {
+  readonly frames: FrameIngestInput[] = [];
+  readonly decodeFailures: FrameDecodeFailureInput[] = [];
+
+  async persistFrame(input: FrameIngestInput): Promise<void> {
+    this.frames.push(input);
+  }
+
+  async auditDecodeFailure(input: FrameDecodeFailureInput): Promise<void> {
+    this.decodeFailures.push(input);
+  }
+}
 
 function createDryRunConfig() {
   const result = parseConfig(
@@ -220,13 +233,6 @@ function createDryRunConfig() {
   }
 
   return result.config;
-}
-
-async function fetchMessages(backend: DashboardBackend): Promise<DashboardMessage[]> {
-  const response = await fetch(new URL("/messages", formatHttpUrl(backend.webAddress)));
-  expect(response.status).toBe(200);
-  const payload = (await response.json()) as { messages: DashboardMessage[] };
-  return payload.messages;
 }
 
 function buildDryRunPacket(): Buffer {

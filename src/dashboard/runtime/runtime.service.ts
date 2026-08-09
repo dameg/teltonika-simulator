@@ -1,8 +1,7 @@
-import { Inject, Injectable } from "@nestjs/common";
+import { Inject, Injectable, type OnModuleInit } from "@nestjs/common";
 import { randomUUID } from "node:crypto";
 
 import { runLiveSession } from "../../live-session";
-import type { AvlRecord } from "../../domain";
 import type { VehicleSimulatorCheckpoint } from "../../simulation";
 import {
   DashboardDomainError,
@@ -16,13 +15,10 @@ import {
   type DashboardRunStatus,
 } from "../domain";
 import {
-  InMemoryDashboardDeviceRepository,
-  InMemoryDashboardJourneyRepository,
-  InMemoryDashboardLogRepository,
-  InMemoryDashboardPositionRepository,
-  InMemoryDashboardRuntimeRepository,
+  type DashboardJourneyState,
 } from "../repositories";
-import { createDashboardTelemetry } from "../telemetry";
+import { DASHBOARD_STORE, type DashboardStore } from "../persistence/dashboard-store";
+import { RuntimeConfigRegistry } from "./runtime-config-registry";
 
 export interface RuntimeActionResult {
   imei: string;
@@ -40,11 +36,6 @@ interface ActiveRunState {
   tripId: string;
 }
 
-interface AcceptedPayload {
-  data: unknown;
-  telemetry: ReturnType<typeof createDashboardTelemetry>;
-}
-
 class ActiveRunConflictError extends Error {
   readonly imei: string;
 
@@ -56,76 +47,86 @@ class ActiveRunConflictError extends Error {
 }
 
 @Injectable()
-export class RuntimeService {
+export class RuntimeService implements OnModuleInit {
   private readonly activeRuns = new Map<string, ActiveRunState>();
-  private readonly acceptedPayloads = new Map<string, AcceptedPayload>();
 
   constructor(
-    @Inject(InMemoryDashboardDeviceRepository)
-    private readonly deviceRepository: InMemoryDashboardDeviceRepository,
-    @Inject(InMemoryDashboardJourneyRepository)
-    private readonly journeyRepository: InMemoryDashboardJourneyRepository,
-    @Inject(InMemoryDashboardRuntimeRepository)
-    private readonly runtimeRepository: InMemoryDashboardRuntimeRepository,
-    @Inject(InMemoryDashboardLogRepository)
-    private readonly logRepository: InMemoryDashboardLogRepository,
-    @Inject(InMemoryDashboardPositionRepository)
-    private readonly positionRepository: InMemoryDashboardPositionRepository,
+    @Inject(DASHBOARD_STORE)
+    private readonly store: DashboardStore,
+    @Inject(RuntimeConfigRegistry)
+    private readonly runtimeConfigs: RuntimeConfigRegistry,
   ) {}
 
-  startDevice(imei: string): RuntimeActionResult {
-    const device = this.getDeviceOrThrow(imei);
+  async onModuleInit(): Promise<void> {
+    await this.store.interruptActiveRuns();
+  }
+
+  async startDevice(imei: string): Promise<RuntimeActionResult> {
+    const device = await this.getDeviceOrThrow(imei);
     const normalizedImei = device.imei;
 
     if (this.activeRuns.has(normalizedImei)) {
       throw new ActiveRunConflictError(normalizedImei);
     }
 
-    const abortController = new AbortController();
-    const journey = this.prepareJourney(device);
     const activeRun: ActiveRunState = {
-      abortController,
+      abortController: new AbortController(),
       stopRequested: false,
-      tripId: journey.tripId,
+      tripId: "",
     };
     this.activeRuns.set(normalizedImei, activeRun);
 
-    const now = Date.now();
-    const runId = `${normalizedImei}-${now}`;
-    this.runtimeRepository.set({
-      imei: normalizedImei,
-      runId,
-      status: "starting",
-      updatedAtMs: now,
-      lastStartAtMs: now,
-      lastError: undefined,
-    });
-    this.appendLog({
-      imei: normalizedImei,
-      severity: "info",
-      type: "simulationStartRequested",
-      message: `Simulation start requested for ${normalizedImei}.`,
-      timestampMs: now,
-      context: { runId },
-    });
+    try {
+      const journey = await this.prepareJourney(device);
+      activeRun.tripId = journey.tripId;
+      this.runtimeConfigs.set(device);
 
-    activeRun.completion = this.runDeviceSession(
-      device,
-      runId,
-      journey.tripId,
-      abortController.signal,
-    );
+      const now = Date.now();
+      const runId = randomUUID();
+      await this.store.startRun(
+        {
+          imei: normalizedImei,
+          runId,
+          status: "starting",
+          updatedAtMs: now,
+          lastStartAtMs: now,
+          lastError: undefined,
+        },
+        {
+          id: randomUUID(),
+          imei: normalizedImei,
+          severity: "info",
+          type: "simulationStartRequested",
+          message: `Simulation start requested for ${normalizedImei}.`,
+          timestampMs: now,
+          context: { runId },
+        },
+      );
 
-    return { imei: normalizedImei, status: "started" };
+      activeRun.completion = this.runDeviceSession(
+        device,
+        runId,
+        journey.tripId,
+        activeRun.abortController.signal,
+      );
+
+      return { imei: normalizedImei, status: "started" };
+    } catch (error) {
+      if (this.activeRuns.get(normalizedImei) === activeRun) {
+        this.activeRuns.delete(normalizedImei);
+        this.runtimeConfigs.delete(normalizedImei);
+      }
+      throw error;
+    }
   }
 
-  stopDevice(imei: string): RuntimeActionResult | Promise<RuntimeActionResult> {
+  async stopDevice(imei: string): Promise<RuntimeActionResult> {
     const normalizedImei = normalizeImei(imei);
     const activeRun = this.activeRuns.get(normalizedImei);
     const now = Date.now();
 
     if (!activeRun) {
-      const record = this.runtimeRepository.get(normalizedImei);
+      const record = await this.store.getRun(normalizedImei);
       if (!record) {
         throw new DashboardDomainError(
           "RUN_NOT_FOUND",
@@ -138,7 +139,7 @@ export class RuntimeService {
 
     activeRun.stopRequested = true;
     activeRun.abortController.abort();
-    this.appendLog({
+    await this.appendLog({
       imei: normalizedImei,
       severity: "info",
       type: "simulationStopRequested",
@@ -146,22 +147,21 @@ export class RuntimeService {
       timestampMs: now,
     });
 
-    return activeRun.completion
-      ? activeRun.completion.then(() => ({ imei: normalizedImei, status: "stopped" as const }))
-      : { imei: normalizedImei, status: "stopped" };
+    if (activeRun.completion) await activeRun.completion;
+    return { imei: normalizedImei, status: "stopped" };
   }
 
-  startSelectedDevices(imeis: readonly string[]): RuntimeBatchResult {
+  async startSelectedDevices(imeis: readonly string[]): Promise<RuntimeBatchResult> {
     return {
-      results: imeis.map((imei) => this.startDevice(imei)),
+      results: await Promise.all(imeis.map((imei) => this.startDevice(imei))),
     };
   }
 
-  startAllDevices(): RuntimeBatchResult {
-    const results = this.deviceRepository
-      .list()
+  async startAllDevices(): Promise<RuntimeBatchResult> {
+    const devices = await this.store.listDevices();
+    const results = await Promise.all(devices
       .filter((device) => !this.activeRuns.has(device.imei))
-      .map((device) => this.startDevice(device.imei));
+      .map((device) => this.startDevice(device.imei)));
 
     return { results };
   }
@@ -186,14 +186,15 @@ export class RuntimeService {
     const normalizedImei = device.imei;
 
     try {
+      const persistedJourney = await this.store.getActiveJourney<VehicleSimulatorCheckpoint>(normalizedImei);
       const result = await runLiveSession({
         ...device.config,
         imei: normalizedImei,
         signal,
-        checkpoint: this.journeyRepository.get<VehicleSimulatorCheckpoint>(normalizedImei)?.checkpoint,
-        acceptedRecordCount: this.journeyRepository.get(normalizedImei)?.acceptedRecordCount,
+        checkpoint: persistedJourney?.checkpoint,
+        acceptedRecordCount: persistedJourney?.acceptedRecordCount,
         getCurrentConfiguration: () => {
-          const current = this.deviceRepository.get(normalizedImei) ?? device;
+          const current = this.runtimeConfigs.get(normalizedImei) ?? device;
           return {
             intervalMs: current.config.intervalMs,
             simulationSpeed: current.config.simulationSpeed,
@@ -204,36 +205,23 @@ export class RuntimeService {
             configRevision: current.configRevision,
           };
         },
-        onRecordAccepted: (record, packetHex, context) => {
-          const configRevision = context.configuration.configRevision ?? device.configRevision;
-          this.recordPosition(normalizedImei, tripId, configRevision, record);
-          this.journeyRepository.set<VehicleSimulatorCheckpoint>({
-            imei: normalizedImei,
-            tripId,
-            routeFile: device.config.routeFile,
-            acceptedRecordCount: context.acceptedRecordCount,
-            completed: false,
-            checkpoint: context.checkpoint,
-          });
-          this.acceptedPayloads.set(normalizedImei, {
-            data: jsonSafe({
-              protocol: "codec8e",
-              rawHex: packetHex,
-              record,
-            }),
-            telemetry: createDashboardTelemetry(record),
-          });
+        onRecordAccepted: async (_record, _packetHex, context) => {
+          await this.store.updateLatestJourneyCheckpoint(
+            normalizedImei,
+            context.checkpoint,
+          );
         },
         logger: {
           info: (message) => this.handleLiveSessionLog(normalizedImei, runId, message),
-          error: (message) =>
-            this.appendLog({
+          error: async (message) => {
+            await this.appendLog({
               imei: normalizedImei,
               severity: "error",
               type: "runFailed",
               message,
               timestampMs: Date.now(),
-            }),
+            });
+          },
         },
       });
 
@@ -241,52 +229,46 @@ export class RuntimeService {
       const stopRequested = activeRun?.stopRequested ?? signal.aborted;
 
       if (result.kind === "rejected") {
-        this.finalizeRun(normalizedImei, "rejected");
+        await this.finalizeRun(normalizedImei, "rejected");
         return;
       }
 
       if (stopRequested || signal.aborted) {
-        this.finalizeRun(normalizedImei, "stopped");
+        await this.finalizeRun(normalizedImei, "stopped");
         return;
       }
 
-      this.finalizeRun(normalizedImei, "completed");
+      await this.finalizeRun(normalizedImei, "completed");
     } catch (error) {
       const activeRun = this.activeRuns.get(normalizedImei);
       const stopRequested = activeRun?.stopRequested ?? signal.aborted;
 
       if (stopRequested || isAbortError(error)) {
-        this.finalizeRun(normalizedImei, "stopped");
+        await this.finalizeRun(normalizedImei, "stopped");
         return;
       }
 
       const message = error instanceof Error ? error.message : String(error);
-      this.finalizeRun(normalizedImei, "failed", message);
+      await this.finalizeRun(normalizedImei, "failed", message);
     } finally {
       this.activeRuns.delete(normalizedImei);
+      this.runtimeConfigs.delete(normalizedImei);
     }
   }
 
-  private finalizeRun(
+  private async finalizeRun(
     imei: string,
     status: Extract<DashboardRunStatus, "completed" | "failed" | "rejected" | "stopped">,
     lastError?: string,
-  ): DashboardRunRecord {
+  ): Promise<DashboardRunRecord> {
     const now = Date.now();
-    const record = this.runtimeRepository.update(imei, {
+    const record = await this.store.updateRun(imei, {
       status,
       updatedAtMs: now,
       lastStopAtMs: now,
       lastError,
     });
-
-    const journey = this.journeyRepository.get(imei);
-    if (journey) {
-      this.journeyRepository.set({
-        ...journey,
-        completed: status === "completed",
-      });
-    }
+    if (status === "completed") await this.store.finishJourney(imei, true);
 
     const outcomeMap: Record<
       typeof status,
@@ -315,7 +297,7 @@ export class RuntimeService {
     };
 
     const outcome = outcomeMap[status];
-    this.appendLog({
+    await this.appendLog({
       imei,
       severity: outcome.severity,
       type: outcome.type,
@@ -327,15 +309,15 @@ export class RuntimeService {
     return record;
   }
 
-  private handleLiveSessionLog(imei: string, runId: string, message: string): void {
+  private async handleLiveSessionLog(imei: string, runId: string, message: string): Promise<void> {
     const timestampMs = Date.now();
 
     if (message.startsWith("tcp connected ")) {
-      this.runtimeRepository.update(imei, {
+      await this.store.updateRun(imei, {
         status: "starting",
         updatedAtMs: timestampMs,
       });
-      this.appendLog({
+      await this.appendLog({
         imei,
         severity: "info",
         type: "tcpConnected",
@@ -347,11 +329,11 @@ export class RuntimeService {
     }
 
     if (message.startsWith("imei sent ")) {
-      this.runtimeRepository.update(imei, {
+      await this.store.updateRun(imei, {
         status: "starting",
         updatedAtMs: timestampMs,
       });
-      this.appendLog({
+      await this.appendLog({
         imei,
         severity: "info",
         type: "imeiSent",
@@ -363,11 +345,11 @@ export class RuntimeService {
     }
 
     if (message.startsWith("reconnect ")) {
-      this.runtimeRepository.update(imei, {
+      await this.store.updateRun(imei, {
         status: "reconnecting",
         updatedAtMs: timestampMs,
       });
-      this.appendLog({
+      await this.appendLog({
         imei,
         severity: "warn",
         type: "reconnectAttempted",
@@ -378,7 +360,7 @@ export class RuntimeService {
     }
 
     if (message.startsWith("shutdown ")) {
-      this.appendLog({
+      await this.appendLog({
         imei,
         severity: "info",
         type: "simulationStopRequested",
@@ -389,7 +371,7 @@ export class RuntimeService {
     }
 
     if (message.startsWith("imei rejected ")) {
-      this.appendLog({
+      await this.appendLog({
         imei,
         severity: "warn",
         type: "imeiRejected",
@@ -400,11 +382,11 @@ export class RuntimeService {
     }
 
     if (message.startsWith("imei accepted ")) {
-      this.runtimeRepository.update(imei, {
+      await this.store.updateRun(imei, {
         status: "running",
         updatedAtMs: timestampMs,
       });
-      this.appendLog({
+      await this.appendLog({
         imei,
         severity: "info",
         type: "imeiAccepted",
@@ -415,25 +397,21 @@ export class RuntimeService {
     }
 
     if (message.startsWith("avl sent ")) {
-      this.runtimeRepository.update(imei, {
+      await this.store.updateRun(imei, {
         status: "running",
         updatedAtMs: timestampMs,
       });
-      const acceptedPayload = this.acceptedPayloads.get(imei);
-      this.appendLog({
+      await this.appendLog({
         imei,
         severity: "info",
         type: "avlPacketSent",
         message,
         timestampMs,
-        data: acceptedPayload?.data,
-        telemetry: acceptedPayload?.telemetry,
       });
-      this.acceptedPayloads.delete(imei);
 
       const ackMatch = /ack=(\d+)/.exec(message);
       if (ackMatch) {
-        this.appendLog({
+        await this.appendLog({
           imei,
           severity: "debug",
           type: "avlAcknowledged",
@@ -446,11 +424,11 @@ export class RuntimeService {
     }
 
     if (message.startsWith("connection lost ")) {
-      this.runtimeRepository.update(imei, {
+      await this.store.updateRun(imei, {
         status: "reconnecting",
         updatedAtMs: timestampMs,
       });
-      this.appendLog({
+      await this.appendLog({
         imei,
         severity: "warn",
         type: "reconnectAttempted",
@@ -461,8 +439,8 @@ export class RuntimeService {
     }
   }
 
-  private getDeviceOrThrow(imei: string): DashboardDeviceRecord {
-    const device = this.deviceRepository.get(imei);
+  private async getDeviceOrThrow(imei: string): Promise<DashboardDeviceRecord> {
+    const device = await this.store.getDevice(imei);
     if (!device) {
       throw new DashboardDomainError(
         "DEVICE_NOT_FOUND",
@@ -473,13 +451,13 @@ export class RuntimeService {
     return device;
   }
 
-  private prepareJourney(device: DashboardDeviceRecord) {
-    const existing = this.journeyRepository.get(device.imei);
+  private async prepareJourney(device: DashboardDeviceRecord): Promise<DashboardJourneyState> {
+    const existing = await this.store.getActiveJourney(device.imei);
     if (existing && !existing.completed && existing.routeFile === device.config.routeFile) {
       return existing;
     }
 
-    return this.journeyRepository.set({
+    return this.store.setJourney({
       imei: device.imei,
       tripId: randomUUID(),
       routeFile: device.config.routeFile,
@@ -488,28 +466,8 @@ export class RuntimeService {
     });
   }
 
-  private recordPosition(
-    imei: string,
-    tripId: string,
-    configRevision: number,
-    record: AvlRecord,
-  ): void {
-    this.positionRepository.append({
-      imei,
-      tripId,
-      configRevision,
-      timestampMs: record.timestampMs,
-      latitude: record.gps.latitude / 10_000_000,
-      longitude: record.gps.longitude / 10_000_000,
-      altitudeMeters: record.gps.altitudeMeters,
-      headingDegrees: record.gps.headingDegrees,
-      speedKph: record.gps.speedKph,
-      satellites: record.gps.satellites,
-    });
-  }
-
-  private appendLog(event: Omit<DashboardLogEvent, "id">): DashboardLogEvent {
-    return this.logRepository.append({
+  private appendLog(event: Omit<DashboardLogEvent, "id">): Promise<DashboardLogEvent> {
+    return this.store.appendLog({
       id: randomUUID(),
       ...event,
     });
@@ -518,8 +476,4 @@ export class RuntimeService {
 
 function isAbortError(error: unknown): boolean {
   return error instanceof Error && error.name === "AbortError";
-}
-
-function jsonSafe(value: unknown): unknown {
-  return JSON.parse(JSON.stringify(value, (_key, item) => typeof item === "bigint" ? item.toString() : item));
 }

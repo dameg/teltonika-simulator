@@ -19,7 +19,7 @@ export class LoggingController {
   ) {}
 
   @Get()
-  listEvents(
+  async listEvents(
     @Query("imei") imei?: string,
     @Query("severity") severity?: string,
     @Query("type") type?: string,
@@ -27,7 +27,7 @@ export class LoggingController {
   ) {
     try {
       return {
-        events: this.loggingService.listEvents({ imei, severity, type, limit }),
+        events: await this.loggingService.listEvents({ imei, severity, type, limit }),
       };
     } catch (error) {
       throw toHttpException(error);
@@ -36,15 +36,15 @@ export class LoggingController {
 
   @Delete()
   @HttpCode(204)
-  clearAllEvents() {
-    this.loggingService.clearAllEvents();
+  async clearAllEvents() {
+    await this.loggingService.clearAllEvents();
   }
 
   @Delete("devices/:imei")
   @HttpCode(204)
-  clearDeviceEvents(@Param("imei") imei: string) {
+  async clearDeviceEvents(@Param("imei") imei: string) {
     try {
-      this.loggingService.clearDeviceEvents(imei);
+      await this.loggingService.clearDeviceEvents(imei);
     } catch (error) {
       throw toHttpException(error);
     }

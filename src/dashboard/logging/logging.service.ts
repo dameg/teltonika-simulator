@@ -6,9 +6,8 @@ import {
 } from "../domain";
 import {
   type DashboardLogQuery,
-  InMemoryDashboardDeviceRepository,
-  InMemoryDashboardLogRepository,
 } from "../repositories";
+import { DASHBOARD_STORE, type DashboardStore } from "../persistence/dashboard-store";
 
 interface LoggingQueryInput {
   imei?: string;
@@ -39,28 +38,26 @@ const logEventTypes = new Set<DashboardLogEventType>([
 @Injectable()
 export class LoggingService {
   constructor(
-    @Inject(InMemoryDashboardLogRepository)
-    private readonly logRepository: InMemoryDashboardLogRepository,
-    @Inject(InMemoryDashboardDeviceRepository)
-    private readonly deviceRepository: InMemoryDashboardDeviceRepository,
+    @Inject(DASHBOARD_STORE)
+    private readonly store: DashboardStore,
   ) {}
 
-  listEvents(input: LoggingQueryInput) {
+  async listEvents(input: LoggingQueryInput) {
     const query = this.parseQuery(input);
     if (query.imei) {
-      this.assertDeviceExists(query.imei);
+      await this.assertDeviceExists(query.imei);
     }
 
-    return this.logRepository.list(query);
+    return this.store.listLogs(query);
   }
 
-  clearAllEvents(): void {
-    this.logRepository.clear();
+  clearAllEvents(): Promise<void> {
+    return this.store.hideLogs();
   }
 
-  clearDeviceEvents(imei: string): void {
-    this.assertDeviceExists(imei);
-    this.logRepository.clearByDevice(imei);
+  async clearDeviceEvents(imei: string): Promise<void> {
+    await this.assertDeviceExists(imei);
+    await this.store.hideLogs(imei);
   }
 
   private parseQuery(input: LoggingQueryInput): DashboardLogQuery {
@@ -87,8 +84,8 @@ export class LoggingService {
     };
   }
 
-  private assertDeviceExists(imei: string): void {
-    if (!this.deviceRepository.get(imei)) {
+  private async assertDeviceExists(imei: string): Promise<void> {
+    if (!await this.store.getDevice(imei)) {
       throw new Error(`Device not found: ${imei}`);
     }
   }

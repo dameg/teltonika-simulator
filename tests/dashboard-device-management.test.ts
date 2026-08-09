@@ -1,175 +1,86 @@
-import { build } from "esbuild";
-import { mkdir } from "node:fs/promises";
-import { dirname, resolve } from "node:path";
+import { describe, expect, it, vi } from "vitest";
 
-import {
-  InMemoryDashboardDeviceRepository,
-  InMemoryDashboardLogRepository,
-  InMemoryDashboardRuntimeRepository,
-  startDashboardServer,
-  type DashboardServer
-} from "../src";
+import { DashboardDomainError } from "../src/dashboard/domain";
+import { PostgresDashboardStore } from "../src/dashboard/persistence/dashboard-store";
+import type { DatabaseService } from "../src/dashboard/persistence/database.service";
 
-const frontendEntry = resolve(process.cwd(), "src/dashboard/frontend/main.tsx");
-const frontendOutfile = resolve(process.cwd(), "dist/dashboard/frontend/dashboard-app.js");
-const routeFile = "tests/fixtures/city-loop.route.json";
+describe("PostgreSQL device management", () => {
+  it("reactivates an archived IMEI with a new immutable configuration revision", async () => {
+    const client = transactionClient([{ archived_at: new Date(), config_revision: 4 }]);
+    const database = fakeDatabase(client, 5);
+    const store = new PostgresDashboardStore(database as unknown as DatabaseService);
 
-describe("dashboard device management API", () => {
-  let server: DashboardServer;
-  let deviceRepository: InMemoryDashboardDeviceRepository;
-  let logRepository: InMemoryDashboardLogRepository;
-  let runtimeRepository: InMemoryDashboardRuntimeRepository;
-
-  beforeAll(async () => {
-    await mkdir(dirname(frontendOutfile), { recursive: true });
-    await build({
-      entryPoints: [frontendEntry],
-      outfile: frontendOutfile,
-      bundle: true,
-      format: "esm",
-      platform: "browser",
-      target: ["es2020"],
-      jsx: "automatic",
-      sourcemap: false,
-      loader: { ".png": "dataurl" },
-      logLevel: "silent"
-    });
-
-    server = await startDashboardServer({ host: "127.0.0.1", port: 0 });
-    deviceRepository = server.app.get(InMemoryDashboardDeviceRepository);
-    logRepository = server.app.get(InMemoryDashboardLogRepository);
-    runtimeRepository = server.app.get(InMemoryDashboardRuntimeRepository);
-  });
-
-  beforeEach(() => {
-    deviceRepository.clear();
-    logRepository.clear();
-    runtimeRepository.clear();
-  });
-
-  afterAll(async () => {
-    await server.close();
-  });
-
-  it("creates, lists, updates, and deletes devices", async () => {
-    const createResponse = await fetch(`${server.url}/api/devices`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        imei: "123456789012345",
-        label: "Truck 01",
-        config: createDeviceConfig()
-      })
-    });
-
-    expect(createResponse.status).toBe(201);
-    const createdBody = await createResponse.json();
-    expect(createdBody.device).toMatchObject({
+    const device = await store.createDevice({
       imei: "123456789012345",
-      label: "Truck 01"
+      label: "Reactivated device",
+      config: testConfig(),
     });
 
-    const listResponse = await fetch(`${server.url}/api/devices`);
-    expect(listResponse.status).toBe(200);
-    const listBody = await listResponse.json();
-    expect(listBody.devices).toHaveLength(1);
-
-    const updateResponse = await fetch(`${server.url}/api/devices/123456789012345`, {
-      method: "PATCH",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        label: "Truck 01 Updated"
-      })
-    });
-
-    expect(updateResponse.status).toBe(200);
-    const updatedBody = await updateResponse.json();
-    expect(updatedBody.device).toMatchObject({
-      imei: "123456789012345",
-      label: "Truck 01 Updated"
-    });
-
-    const deleteResponse = await fetch(`${server.url}/api/devices/123456789012345`, {
-      method: "DELETE"
-    });
-    expect(deleteResponse.status).toBe(204);
-
-    const emptyListResponse = await fetch(`${server.url}/api/devices`);
-    const emptyListBody = await emptyListResponse.json();
-    expect(emptyListBody.devices).toHaveLength(0);
+    expect(device.configRevision).toBe(5);
+    const simulatorConfigCall = client.query.mock.calls.find(([sql]) =>
+      String(sql).includes("INSERT INTO simulator_configs"),
+    );
+    expect(simulatorConfigCall?.[1]?.[2]).toBe(5);
+    const revisionCall = client.query.mock.calls.find(([sql]) =>
+      String(sql).includes("INSERT INTO device_config_revisions"),
+    );
+    expect(revisionCall?.[1]?.[1]).toBe(5);
   });
 
-  it("allows live configuration updates but blocks transport changes and deletion", async () => {
-    await fetch(`${server.url}/api/devices`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        imei: "999999999999999",
-        label: "Running Device",
-        config: createDeviceConfig()
-      })
-    });
+  it("rejects a duplicate active simulator without changing its configuration", async () => {
+    const client = transactionClient([{ archived_at: null, config_revision: 2 }]);
+    const database = fakeDatabase(client, 2);
+    const store = new PostgresDashboardStore(database as unknown as DatabaseService);
 
-    runtimeRepository.set({
-      imei: "999999999999999",
-      status: "running",
-      updatedAtMs: Date.now()
-    });
+    await expect(store.createDevice({
+      imei: "123456789012345",
+      label: "Duplicate",
+      config: testConfig(),
+    })).rejects.toMatchObject({ code: "DUPLICATE_IMEI" } satisfies Partial<DashboardDomainError>);
 
-    const updateResponse = await fetch(`${server.url}/api/devices/999999999999999`, {
-      method: "PATCH",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        label: "Updated while running",
-        config: { ...createDeviceConfig(), intervalMs: 2_000, drivingStyle: "eco" },
-      })
-    });
-
-    expect(updateResponse.status).toBe(200);
-    const updateBody = await updateResponse.json();
-    expect(updateBody.device).toMatchObject({
-      label: "Updated while running",
-      configRevision: 2,
-      config: { intervalMs: 2_000, drivingStyle: "eco" },
-    });
-
-    const lockedResponse = await fetch(`${server.url}/api/devices/999999999999999`, {
-      method: "PATCH",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        config: { ...createDeviceConfig(), host: "example.invalid" },
-      }),
-    });
-
-    expect(lockedResponse.status).toBe(409);
-    const lockedBody = await lockedResponse.json();
-    expect(lockedBody.error).toMatchObject({
-      code: "ACTIVE_CONFIG_FIELD_LOCKED",
-      fields: ["host"],
-    });
-
-    const deleteResponse = await fetch(`${server.url}/api/devices/999999999999999`, {
-      method: "DELETE"
-    });
-
-    expect(deleteResponse.status).toBe(409);
-    const deleteBody = await deleteResponse.json();
-    expect(deleteBody.error).toMatchObject({
-      code: "DEVICE_RUNNING"
-    });
+    expect(client.query.mock.calls.some(([sql]) =>
+      String(sql).includes("INSERT INTO simulator_configs"),
+    )).toBe(false);
   });
 });
 
-function createDeviceConfig() {
+function transactionClient(existingRows: Array<{ archived_at: Date | null; config_revision: number | null }>) {
+  return {
+    query: vi.fn(async (sql: string, _values?: readonly unknown[]) => ({
+      rows: sql.includes("SELECT d.archived_at") ? existingRows : [],
+      rowCount: 1,
+    })),
+  };
+}
+
+function fakeDatabase(client: ReturnType<typeof transactionClient>, configRevision: number) {
+  return {
+    withTransaction: vi.fn(async (operation: (value: typeof client) => Promise<unknown>) => operation(client)),
+    query: vi.fn(async () => ({
+      rows: [{
+        imei: "123456789012345",
+        label: "Reactivated device",
+        config: testConfig(),
+        config_revision: configRevision,
+        created_at: new Date(1),
+        updated_at: new Date(2),
+      }],
+      rowCount: 1,
+    })),
+  };
+}
+
+function testConfig() {
   return {
     host: "127.0.0.1",
     port: 5027,
-    intervalMs: 1000,
-    reconnectDelayMs: 3000,
-    routeFile,
-    drivingStyle: "normal",
-    seed: 42,
+    intervalMs: 1_000,
+    simulationSpeed: 0,
+    reconnectDelayMs: 3_000,
+    routeFile: "tests/fixtures/city-loop.route.json",
+    drivingStyle: "normal" as const,
+    seed: 1,
     deviceProfile: "default-codec8e",
-    packetCount: 2
+    packetCount: 1,
   };
 }

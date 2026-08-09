@@ -8,6 +8,7 @@ export type DashboardRunStatus =
   | "stopped"
   | "rejected"
   | "failed"
+  | "interrupted"
   | "completed";
 
 export type DashboardLogSeverity = "debug" | "info" | "warn" | "error";
@@ -23,11 +24,14 @@ export type DashboardLogEventType =
   | "imeiAccepted"
   | "imeiRejected"
   | "avlPacketSent"
+  | "avlFrameReceived"
+  | "avlFrameDecodeFailed"
   | "avlAcknowledged"
   | "reconnectAttempted"
   | "runCompleted"
   | "runStopped"
-  | "runFailed";
+  | "runFailed"
+  | "runInterrupted";
 
 export type DashboardDeviceConfig = Pick<
   SimulatorConfig,

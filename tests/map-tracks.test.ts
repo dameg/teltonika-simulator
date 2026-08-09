@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import {
   colorForRevision,
   groupTracks,
+  historyRecordsToTrackPositions,
+  sampleTrackPositions,
   visibleTrackImeis,
   type TrackPosition,
 } from "../src/dashboard/frontend/map-tracks";
@@ -89,5 +91,49 @@ describe("map tracks", () => {
     expect(colorForRevision("514610464651071", 17)).toBe(colors[16]);
     expect(colorForRevision("514610464651072", 17)).not.toBe(colors[16]);
     expect(colors.every((color) => /^hsl\(\d+\.\d{6}, 68%, 42%\)$/.test(color))).toBe(true);
+  });
+
+  it("samples long tracks while preserving their endpoints", () => {
+    const positions = Array.from({ length: 10_000 }, (_, latitude) =>
+      point("111", "trip-a", 1, latitude),
+    );
+
+    const sampled = sampleTrackPositions(positions, 800);
+
+    expect(sampled).toHaveLength(800);
+    expect(sampled[0]).toBe(positions[0]);
+    expect(sampled.at(-1)).toBe(positions.at(-1));
+  });
+
+  it("reuses short track arrays and validates the sample size", () => {
+    const positions = [point("111", "trip-a", 1, 1), point("111", "trip-a", 1, 2)];
+
+    expect(sampleTrackPositions(positions, 800)).toBe(positions);
+    expect(() => sampleTrackPositions(positions, 1)).toThrow(RangeError);
+  });
+
+  it("maps stored history records onto one selectable trip without losing telemetry", () => {
+    const telemetry = { groups: [{ key: "gps", label: "GPS", fields: [] }] };
+    const records = [{
+      id: "record-1",
+      timestampMs: 1_700_000_000_000,
+      latitude: 50.0614,
+      longitude: 19.9383,
+      altitudeMeters: 220,
+      headingDegrees: 90,
+      speedKph: 48,
+      satellites: 12,
+      telemetry,
+    }];
+
+    const positions = historyRecordsToTrackPositions(records, "123456789012345", "trip-1");
+
+    expect(positions).toEqual([expect.objectContaining({
+      id: "record-1",
+      imei: "123456789012345",
+      tripId: "trip-1",
+      configRevision: 1,
+      telemetry,
+    })]);
   });
 });

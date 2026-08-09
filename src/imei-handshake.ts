@@ -5,8 +5,8 @@ export interface ImeiHandshakeOptions {
   port: number;
   imei: string;
   signal?: AbortSignal;
-  onConnected?: (socket: net.Socket) => void;
-  onImeiSent?: (socket: net.Socket) => void;
+  onConnected?: (socket: net.Socket) => void | Promise<void>;
+  onImeiSent?: (socket: net.Socket) => void | Promise<void>;
 }
 
 export interface AcceptedImeiHandshake {
@@ -30,6 +30,7 @@ export async function performImeiHandshake(options: ImeiHandshakeOptions): Promi
     let settled = false;
     let acknowledged = false;
     let aborted = false;
+    let callbacksComplete = false;
     let ackBuffer = Buffer.alloc(0);
     const removeAbortListener = bindAbortSignal(options.signal, () => {
       if (settled) {
@@ -41,9 +42,7 @@ export async function performImeiHandshake(options: ImeiHandshakeOptions): Promi
     });
 
     socket.once("connect", () => {
-      options.onConnected?.(socket);
-      socket.write(frame);
-      options.onImeiSent?.(socket);
+      void notifyAndSend();
     });
 
     socket.on("data", (chunk) => {
@@ -52,7 +51,29 @@ export async function performImeiHandshake(options: ImeiHandshakeOptions): Promi
       }
 
       ackBuffer = Buffer.concat([ackBuffer, chunk]);
-      if (ackBuffer.length < 1) {
+      processAcknowledgement();
+    });
+
+    async function notifyAndSend(): Promise<void> {
+      try {
+        await options.onConnected?.(socket);
+        if (settled) return;
+        socket.write(frame);
+        await options.onImeiSent?.(socket);
+        if (settled) return;
+        callbacksComplete = true;
+        processAcknowledgement();
+      } catch (error) {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        socket.destroy();
+        reject(error);
+      }
+    }
+
+    function processAcknowledgement(): void {
+      if (settled || acknowledged || !callbacksComplete || ackBuffer.length < 1) {
         return;
       }
 
@@ -81,7 +102,7 @@ export async function performImeiHandshake(options: ImeiHandshakeOptions): Promi
       cleanup();
       socket.destroy();
       reject(new Error(`Unexpected IMEI acknowledgement byte: 0x${ack.toString(16).padStart(2, "0")}.`));
-    });
+    }
 
     socket.once("error", (error) => {
       if (settled) {

@@ -1,7 +1,6 @@
 import { context } from "esbuild";
 import { resolve } from "node:path";
 
-import { startDashboardBackend } from "../dashboard-backend";
 import { startDashboardServer } from "./main";
 
 const rootDir = process.cwd();
@@ -12,26 +11,21 @@ async function main(): Promise<void> {
     entryPoints: [resolve(rootDir, "src/dashboard/frontend/main.tsx")],
     format: "iife",
     loader: { ".png": "dataurl" },
+    minify: true,
     outfile: resolve(rootDir, "dist/dashboard/frontend/dashboard-app.js"),
-    platform: "browser"
+    platform: "browser",
+    sourcemap: true
   });
 
   await frontend.rebuild();
   await frontend.watch();
 
-  const parser = await startDashboardBackend({
-    host: "127.0.0.1",
-    port: 5027,
-    webHost: "127.0.0.1",
-    webPort: 3001,
-    acceptImei: true
-  });
   const server = await startDashboardServer({ rootDir });
   console.log(`Dashboard development server available at ${server.url}`);
   console.log("Teltonika parser available at tcp://127.0.0.1:5027");
 
   const stop = async (): Promise<void> => {
-    await Promise.all([frontend.dispose(), parser.close(), server.close()]);
+    await Promise.all([frontend.dispose(), server.close()]);
   };
 
   process.once("SIGINT", () => void stop().finally(() => process.exit(0)));

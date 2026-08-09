@@ -12,6 +12,11 @@ import type {
 } from "./codec8-extended-decoder";
 import { decodeCodec8ExtendedPacket } from "./codec8-extended-decoder";
 import type { DashboardConfig } from "./config";
+import type {
+  FrameDecodeFailureInput,
+  FrameIngestInput,
+  FrameIngestStore,
+} from "./frame-ingest-store";
 
 export interface DashboardMessageBase {
   sessionId: string;
@@ -40,7 +45,6 @@ export type DashboardMessage = DashboardImeiMessage | DashboardAvlMessage | Dash
 export interface DashboardBackend {
   tcpAddress: AddressInfo;
   webAddress: AddressInfo;
-  getMessages(): DashboardMessage[];
   close(): Promise<void>;
 }
 
@@ -48,10 +52,14 @@ interface ConnectionState {
   sessionId: string;
   buffer: Buffer;
   imei: string | null;
+  failed: boolean;
+  processing: Promise<void>;
 }
 
-export async function startDashboardBackend(config: DashboardConfig): Promise<DashboardBackend> {
-  const messages: DashboardMessage[] = [];
+export async function startDashboardBackend(
+  config: DashboardConfig,
+  frameStore: FrameIngestStore = missingFrameIngestStore,
+): Promise<DashboardBackend> {
   let connectionSequence = 0;
   const states = new Map<Socket, ConnectionState>();
 
@@ -60,13 +68,24 @@ export async function startDashboardBackend(config: DashboardConfig): Promise<Da
     const state: ConnectionState = {
       sessionId: `session-${connectionSequence}`,
       buffer: Buffer.alloc(0),
-      imei: null
+      imei: null,
+      failed: false,
+      processing: Promise.resolve(),
     };
     states.set(socket, state);
 
     socket.on("data", (chunk) => {
+      if (state.failed) {
+        return;
+      }
+
       state.buffer = Buffer.concat([state.buffer, chunk]);
-      processSocketBuffer(socket, state, messages, config.acceptImei);
+      state.processing = state.processing
+        .then(() => processSocketBuffer(socket, state, frameStore, config.acceptImei))
+        .catch(() => {
+          state.failed = true;
+          void closeSocket(socket);
+        });
     });
 
     socket.on("close", () => {
@@ -79,37 +98,47 @@ export async function startDashboardBackend(config: DashboardConfig): Promise<Da
   });
 
   const webServer = createHttpServer((request, response) => {
-    handleHttpRequest(request, response, messages);
+    handleHttpRequest(request, response);
   });
 
-  await Promise.all([
+  const listenResults = await Promise.allSettled([
     listenTcpServer(tcpServer, config.host, config.port),
     listenHttpServer(webServer, config.webHost, config.webPort)
   ]);
+  const listenFailure = listenResults.find(
+    (result): result is PromiseRejectedResult => result.status === "rejected",
+  );
+  if (listenFailure) {
+    await Promise.allSettled([
+      closeServer(tcpServer),
+      closeServer(webServer),
+      ...Array.from(states.keys(), (socket) => closeSocket(socket))
+    ]);
+    throw listenFailure.reason;
+  }
 
   return {
     tcpAddress: tcpServer.address() as AddressInfo,
     webAddress: webServer.address() as AddressInfo,
-    getMessages() {
-      return messages.slice();
-    },
     async close() {
+      const pendingProcessing = [...states.values()].map((state) => state.processing);
       await Promise.allSettled([
         closeServer(tcpServer),
         closeServer(webServer),
         ...Array.from(states.keys(), (socket) => closeSocket(socket))
       ]);
+      await Promise.allSettled(pendingProcessing);
     }
   };
 }
 
-function processSocketBuffer(
+async function processSocketBuffer(
   socket: Socket,
   state: ConnectionState,
-  messages: DashboardMessage[],
+  frameStore: FrameIngestStore,
   acceptImei: boolean
-): void {
-  while (true) {
+): Promise<void> {
+  while (!state.failed && !socket.destroyed) {
     if (state.imei === null) {
       if (state.buffer.length < 2) {
         return;
@@ -126,17 +155,9 @@ function processSocketBuffer(
       state.buffer = state.buffer.subarray(frameLength);
       state.imei = imei;
 
-      messages.push({
-        type: "imei",
-        sessionId: state.sessionId,
-        timestamp: new Date().toISOString(),
-        imei,
-        rawHex: frame.toString("hex"),
-        accepted: acceptImei
-      });
-
-      socket.write(Buffer.from([acceptImei ? 0x01 : 0x00]));
-      if (!acceptImei) {
+      const accepted = acceptImei && /^[0-9]{15}$/.test(imei);
+      socket.write(Buffer.from([accepted ? 0x01 : 0x00]));
+      if (!accepted) {
         void closeSocket(socket);
         return;
       }
@@ -156,42 +177,45 @@ function processSocketBuffer(
 
     const frame = state.buffer.subarray(0, frameLength);
     state.buffer = state.buffer.subarray(frameLength);
+    const receivedAt = new Date();
 
     const decoded = decodeCodec8ExtendedPacket(frame);
     if (decoded.ok) {
-      messages.push({
-        type: "avl",
+      const input: FrameIngestInput = {
         sessionId: state.sessionId,
-        timestamp: new Date().toISOString(),
         imei: state.imei,
-        rawHex: frame.toString("hex"),
-        decoded: decoded.packet
-      });
+        receivedAt,
+        rawFrame: Buffer.from(frame),
+        decoded: decoded.packet,
+      };
+      const persisted = await frameStore.persistFrame(input);
 
       const ack = Buffer.alloc(4);
       ack.writeUInt32BE(decoded.packet.recordCount, 0);
-      socket.write(ack);
+      await writeSocket(socket, ack);
+      if (persisted && frameStore.markAcknowledged) {
+        await frameStore.markAcknowledged(persisted.receptionId, decoded.packet.recordCount);
+      }
       continue;
     }
 
-    messages.push({
-      type: "error",
+    const failure: FrameDecodeFailureInput = {
       sessionId: state.sessionId,
-      timestamp: new Date().toISOString(),
       imei: state.imei,
-      rawHex: frame.toString("hex"),
-      error: decoded.error
-    });
+      receivedAt,
+      rawFrame: Buffer.from(frame),
+      error: decoded.error,
+    };
+    await frameStore.auditDecodeFailure(failure);
   }
 }
 
 function handleHttpRequest(
   request: IncomingMessage,
   response: ServerResponse,
-  messages: DashboardMessage[]
 ): void {
-  if (request.method === "GET" && request.url === "/messages") {
-    const body = JSON.stringify({ messages });
+  if (request.method === "GET" && request.url === "/") {
+    const body = JSON.stringify({ status: "ok" });
     response.writeHead(200, {
       "content-type": "application/json; charset=utf-8",
       "content-length": Buffer.byteLength(body)
@@ -200,18 +224,23 @@ function handleHttpRequest(
     return;
   }
 
-  if (request.method === "GET" && request.url === "/") {
-    const body = renderDashboardPage();
-    response.writeHead(200, {
-      "content-type": "text/html; charset=utf-8",
-      "content-length": Buffer.byteLength(body)
-    });
-    response.end(body);
-    return;
-  }
-
   response.writeHead(404, { "content-type": "text/plain; charset=utf-8" });
   response.end("Not found\n");
+}
+
+const missingFrameIngestStore: FrameIngestStore = {
+  async persistFrame(): Promise<void> {
+    throw new Error("FrameIngestStore is required before AVL frames can be acknowledged.");
+  },
+  async auditDecodeFailure(): Promise<void> {
+    throw new Error("FrameIngestStore is required before decoder failures can be audited.");
+  },
+};
+
+async function writeSocket(socket: Socket, data: Buffer): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    socket.write(data, (error?: Error | null) => error ? reject(error) : resolve());
+  });
 }
 
 function renderDashboardPage(): string {

@@ -2,7 +2,7 @@ import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { memo, useEffect, useMemo, useRef, type ReactElement } from "react";
 
-import { colorForRevision, groupTracks, type TrackTrip } from "./map-tracks";
+import { colorForRevision, groupTracks, sampleTrackPositions, type TrackTrip } from "./map-tracks";
 
 export interface MapDevice {
   imei: string;
@@ -11,6 +11,7 @@ export interface MapDevice {
 }
 
 export interface MapPosition {
+  id?: string;
   imei: string;
   tripId: string;
   configRevision: number;
@@ -36,6 +37,9 @@ interface DeviceMapProps {
   positions: MapPosition[];
   configRevisions: MapConfigRevision[];
   selectedImei: string;
+  variant?: "live" | "history";
+  selectedPositionId?: string;
+  onSelectPosition?: (position: MapPosition) => void;
 }
 
 interface MapLayers {
@@ -45,12 +49,17 @@ interface MapLayers {
 }
 
 const ROUTE_LABEL_MIN_ZOOM = 14;
+const MAX_RENDERED_POINTS_PER_SEGMENT = 800;
+const MAX_HISTORY_POINT_MARKERS = 500;
 
 export const DeviceMap = memo(function DeviceMap({
   devices,
   positions,
   configRevisions,
   selectedImei,
+  variant = "live",
+  selectedPositionId,
+  onSelectPosition,
 }: DeviceMapProps): ReactElement {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | undefined>(undefined);
@@ -68,7 +77,9 @@ export const DeviceMap = memo(function DeviceMap({
     () => new Map(configRevisions.map((revision) => [revisionKey(revision.imei, revision.configRevision), revision])),
     [configRevisions],
   );
-  const fitKey = `${selectedImei}\u0000${grouped.trips.map((trip) => trip.key).join("\u0001")}`;
+  const fitKey = variant === "history"
+    ? `${selectedImei}\u0000${grouped.trips.map((trip) => trip.key).join("\u0001")}\u0000${positions[0]?.timestampMs ?? ""}\u0000${positions.at(-1)?.timestampMs ?? ""}`
+    : `${selectedImei}\u0000${grouped.trips.map((trip) => trip.key).join("\u0001")}`;
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
@@ -101,22 +112,43 @@ export const DeviceMap = memo(function DeviceMap({
     layers.tracks.clearLayers();
     layers.labels.clearLayers();
 
-    const latest = new Map<string, MapPosition>();
-    for (const position of positions) latest.set(position.imei, position);
-    for (const [imei, position] of latest) {
-      const device = deviceByImei.get(imei);
-      L.circleMarker([position.latitude, position.longitude], {
-        radius: imei === selectedImei ? 9 : 7,
-        color: device?.status === "running" ? "#167d6b" : "#64748b",
-        fillOpacity: 0.9,
-      })
-        .bindPopup(`<strong>${escapeHtml(device?.label ?? imei)}</strong><br>${escapeHtml(imei)}<br>${position.speedKph} km/h · ${position.satellites} sat.<br>${position.altitudeMeters} m · ${position.headingDegrees}&deg;`)
-        .addTo(layers.markers);
+    if (variant === "live") {
+      const latest = new Map<string, MapPosition>();
+      for (const position of positions) latest.set(position.imei, position);
+      for (const [imei, position] of latest) {
+        const device = deviceByImei.get(imei);
+        L.circleMarker([position.latitude, position.longitude], {
+          radius: imei === selectedImei ? 9 : 7,
+          color: device?.status === "running" ? "#167d6b" : "#64748b",
+          fillOpacity: 0.9,
+        })
+          .bindPopup(`<strong>${escapeHtml(device?.label ?? imei)}</strong><br>${escapeHtml(imei)}<br>${position.speedKph} km/h · ${position.satellites} sat.<br>${position.altitudeMeters} m · ${position.headingDegrees}&deg;`)
+          .addTo(layers.markers);
+      }
+    } else {
+      const sampled = [...sampleTrackPositions(positions, MAX_HISTORY_POINT_MARKERS)];
+      const selected = selectedPositionId
+        ? positions.find((position) => position.id === selectedPositionId)
+        : undefined;
+      if (selected && !sampled.includes(selected)) sampled.push(selected);
+
+      for (const position of sampled) {
+        const isSelected = position.id === selectedPositionId;
+        const marker = L.circleMarker([position.latitude, position.longitude], {
+          radius: isSelected ? 7 : 3,
+          color: isSelected ? "#172033" : "#225ea8",
+          fillColor: isSelected ? "#f59f00" : "#ffffff",
+          fillOpacity: isSelected ? 1 : 0.8,
+          weight: isSelected ? 3 : 1.5,
+        }).bindTooltip(`${formatDateTime(position.timestampMs)} · ${position.speedKph} km/h`);
+        if (onSelectPosition) marker.on("click", () => onSelectPosition(position));
+        marker.addTo(layers.markers);
+      }
     }
 
     for (const segment of grouped.segments) {
       if (segment.positions.length < 2) continue;
-      const latLngs = segment.positions.map(
+      const latLngs = sampleTrackPositions(segment.positions, MAX_RENDERED_POINTS_PER_SEGMENT).map(
         (position) => [position.latitude, position.longitude] as L.LatLngTuple,
       );
       L.polyline(latLngs, { color: "#ffffff", weight: 9, opacity: 0.9 }).addTo(layers.tracks);
@@ -126,20 +158,22 @@ export const DeviceMap = memo(function DeviceMap({
       }).addTo(layers.tracks);
     }
 
-    for (const trip of grouped.trips) {
-      const device = deviceByImei.get(trip.imei);
-      L.circleMarker([trip.labelPosition.latitude, trip.labelPosition.longitude], {
-        radius: 0,
-        opacity: 0,
-        fillOpacity: 0,
-        interactive: false,
-      })
-        .bindTooltip(`${device?.label ?? trip.imei} · ${trip.imei}`, {
-          permanent: true,
-          direction: "center",
-          className: "route-device-label",
+    if (variant === "live") {
+      for (const trip of grouped.trips) {
+        const device = deviceByImei.get(trip.imei);
+        L.circleMarker([trip.labelPosition.latitude, trip.labelPosition.longitude], {
+          radius: 0,
+          opacity: 0,
+          fillOpacity: 0,
+          interactive: false,
         })
-        .addTo(layers.labels);
+          .bindTooltip(`${device?.label ?? trip.imei} · ${trip.imei}`, {
+            permanent: true,
+            direction: "center",
+            className: "route-device-label",
+          })
+          .addTo(layers.labels);
+      }
     }
 
     const syncLabels = () => {
@@ -149,8 +183,10 @@ export const DeviceMap = memo(function DeviceMap({
         layers.labels.removeFrom(map);
       }
     };
-    syncLabels();
-    map.on("zoomend", syncLabels);
+    if (variant === "live") {
+      syncLabels();
+      map.on("zoomend", syncLabels);
+    }
 
     const bounds = L.latLngBounds([]);
     for (const trip of grouped.trips) {
@@ -162,19 +198,30 @@ export const DeviceMap = memo(function DeviceMap({
     }
 
     return () => {
-      map.off("zoomend", syncLabels);
+      if (variant === "live") map.off("zoomend", syncLabels);
     };
-  }, [deviceByImei, fitKey, grouped, positions, selectedImei]);
+  }, [deviceByImei, fitKey, grouped, onSelectPosition, positions, selectedImei, selectedPositionId, variant]);
 
   return (
     <div className="map-widget">
-      <div ref={containerRef} className="map-canvas" aria-label="Device positions map" />
-      {grouped.trips.length > 0 ? (
+      <div
+        ref={containerRef}
+        className={`map-canvas${variant === "history" ? " map-canvas-history" : ""}`}
+        aria-label={variant === "history" ? "Historical trip map" : "Device positions map"}
+      />
+      {variant === "live" && grouped.trips.length > 0 ? (
         <MapLegend trips={grouped.trips} devices={deviceByImei} revisions={revisionByKey} />
       ) : null}
-      {positions.length === 0 ? <p className="map-caption">Waiting for acknowledged GPS data…</p> : null}
+      {positions.length === 0 ? (
+        <p className="map-caption">
+          {variant === "history" ? "Select a trip to view its stored route." : "Waiting for acknowledged GPS data…"}
+        </p>
+      ) : null}
       {grouped.pointCount > 0 ? (
-        <p className="map-caption">{selectedImei ? "Route" : "Routes"}: {grouped.pointCount} acknowledged GPS points.</p>
+        <p className="map-caption">
+          {variant === "history" ? "Stored route" : selectedImei ? "Route" : "Routes"}: {grouped.pointCount} GPS points
+          {variant === "history" ? " · select a point for telemetry." : "."}
+        </p>
       ) : null}
     </div>
   );
@@ -230,6 +277,9 @@ function areDeviceMapPropsEqual(previous: DeviceMapProps, next: DeviceMapProps):
     previous.positions !== next.positions
     || previous.configRevisions !== next.configRevisions
     || previous.selectedImei !== next.selectedImei
+    || previous.variant !== next.variant
+    || previous.selectedPositionId !== next.selectedPositionId
+    || previous.onSelectPosition !== next.onSelectPosition
     || previous.devices.length !== next.devices.length
   ) return false;
 
@@ -247,6 +297,10 @@ function shortTripId(tripId: string): string {
 
 function formatTime(value: number): string {
   return new Date(value).toLocaleTimeString();
+}
+
+function formatDateTime(value: number): string {
+  return new Date(value).toLocaleString();
 }
 
 function configSummary(config: MapConfigRevision["config"]): string {

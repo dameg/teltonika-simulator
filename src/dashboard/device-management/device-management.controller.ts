@@ -28,23 +28,23 @@ export class DeviceManagementController {
   ) {}
 
   @Get()
-  listDevices() {
-    return { devices: this.deviceManagementService.listDevices() };
+  async listDevices() {
+    return { devices: await this.deviceManagementService.listDevices() };
   }
 
   @Post()
-  createDevice(@Body() body: unknown) {
+  async createDevice(@Body() body: unknown) {
     try {
-      return { device: this.deviceManagementService.createDevice(asRecord(body)) };
+      return { device: await this.deviceManagementService.createDevice(asRecord(body)) };
     } catch (error) {
       throw toHttpException(error);
     }
   }
 
   @Patch(":imei")
-  updateDevice(@Param("imei") imei: string, @Body() body: unknown) {
+  async updateDevice(@Param("imei") imei: string, @Body() body: unknown) {
     try {
-      return { device: this.deviceManagementService.updateDevice(imei, asRecord(body)) };
+      return { device: await this.deviceManagementService.updateDevice(imei, asRecord(body)) };
     } catch (error) {
       throw toHttpException(error);
     }
@@ -52,9 +52,9 @@ export class DeviceManagementController {
 
   @Delete(":imei")
   @HttpCode(204)
-  deleteDevice(@Param("imei") imei: string) {
+  async deleteDevice(@Param("imei") imei: string) {
     try {
-      this.deviceManagementService.deleteDevice(imei);
+      await this.deviceManagementService.deleteDevice(imei);
     } catch (error) {
       throw toHttpException(error);
     }

@@ -6,9 +6,18 @@ import { DeviceManagementModule } from "./device-management/device-management.mo
 import { LoggingModule } from "./logging/logging.module";
 import { RuntimeModule } from "./runtime/runtime.module";
 import { StatusModule } from "./status/status.module";
+import { HistoryModule } from "./history/history.module";
+import { DashboardRepositoriesModule } from "./dashboard-repositories.module";
 
 @Module({
-  imports: [DeviceManagementModule, RuntimeModule, StatusModule, LoggingModule],
+  imports: [
+    DashboardRepositoriesModule,
+    DeviceManagementModule,
+    RuntimeModule,
+    StatusModule,
+    LoggingModule,
+    HistoryModule,
+  ],
   controllers: [AppController],
   providers: [AppService]
 })

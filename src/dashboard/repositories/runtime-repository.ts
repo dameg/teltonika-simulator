@@ -71,6 +71,7 @@ export class InMemoryDashboardRuntimeRepository {
       stopped: 0,
       rejected: 0,
       failed: 0,
+      interrupted: 0,
       completed: 0,
     };
 

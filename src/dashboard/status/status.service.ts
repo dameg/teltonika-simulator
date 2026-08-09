@@ -6,14 +6,7 @@ import {
   type DashboardRunRecord,
   type DashboardRunStatus,
 } from "../domain";
-import {
-  InMemoryDashboardDeviceRepository,
-  InMemoryDashboardConfigRevisionRepository,
-  InMemoryDashboardJourneyRepository,
-  InMemoryDashboardLogRepository,
-  InMemoryDashboardPositionRepository,
-  InMemoryDashboardRuntimeRepository,
-} from "../repositories";
+import { DASHBOARD_STORE, type DashboardStore } from "../persistence/dashboard-store";
 
 export interface DashboardDeviceStatus {
   imei: string;
@@ -35,24 +28,14 @@ export class ActiveDashboardRunConflictError extends Error {
 @Injectable()
 export class StatusService {
   constructor(
-    @Inject(InMemoryDashboardDeviceRepository)
-    private readonly deviceRepository: InMemoryDashboardDeviceRepository,
-    @Inject(InMemoryDashboardConfigRevisionRepository)
-    private readonly configRevisionRepository: InMemoryDashboardConfigRevisionRepository,
-    @Inject(InMemoryDashboardJourneyRepository)
-    private readonly journeyRepository: InMemoryDashboardJourneyRepository,
-    @Inject(InMemoryDashboardRuntimeRepository)
-    private readonly runtimeRepository: InMemoryDashboardRuntimeRepository,
-    @Inject(InMemoryDashboardLogRepository)
-    private readonly logRepository: InMemoryDashboardLogRepository,
-    @Inject(InMemoryDashboardPositionRepository)
-    private readonly positionRepository: InMemoryDashboardPositionRepository,
+    @Inject(DASHBOARD_STORE)
+    private readonly store: DashboardStore,
   ) {}
 
-  listDeviceStatuses(): DashboardDeviceStatus[] {
-    const devices = this.deviceRepository.list();
+  async listDeviceStatuses(): Promise<DashboardDeviceStatus[]> {
+    const devices = await this.store.listDevices();
     const runtimeByImei = new Map(
-      this.runtimeRepository.list().map((record) => [record.imei, record]),
+      (await this.store.listRuns()).map((record) => [record.imei, record]),
     );
 
     return devices.map((device) =>
@@ -60,16 +43,16 @@ export class StatusService {
     );
   }
 
-  getDeviceStatus(imei: string): DashboardDeviceStatus {
-    const device = this.deviceRepository.get(imei);
+  async getDeviceStatus(imei: string): Promise<DashboardDeviceStatus> {
+    const device = await this.store.getDevice(imei);
     if (!device) {
       throw new Error(`Device not found: ${imei}`);
     }
 
-    return this.toDeviceStatus(device, this.runtimeRepository.get(imei));
+    return this.toDeviceStatus(device, await this.store.getRun(imei));
   }
 
-  getOverview(): DashboardRunOverview {
+  async getOverview(): Promise<DashboardRunOverview> {
     const counts: DashboardRunOverview["counts"] = {
       configured: 0,
       starting: 0,
@@ -78,10 +61,11 @@ export class StatusService {
       stopped: 0,
       rejected: 0,
       failed: 0,
+      interrupted: 0,
       completed: 0,
     };
 
-    for (const status of this.listDeviceStatuses()) {
+    for (const status of await this.listDeviceStatuses()) {
       counts[status.status] += 1;
     }
 
@@ -91,17 +75,17 @@ export class StatusService {
     };
   }
 
-  listPositions(imei?: string) {
-    const positions = this.positionRepository.list(imei);
+  async listPositions(imei?: string) {
+    const positions = await this.store.listPositions(imei);
     return {
       positions,
-      configRevisions: this.configRevisionRepository.listReferenced(positions),
+      configRevisions: await this.store.listConfigRevisionsForPositions(positions),
     };
   }
 
-  clearDashboardState(): void {
-    const activeImeis = this.runtimeRepository
-      .list()
+  async clearDashboardState(): Promise<void> {
+    const activeImeis = (await this.store
+      .listRuns())
       .filter((record) => isActiveStatus(record.status))
       .map((record) => record.imei);
 
@@ -109,12 +93,7 @@ export class StatusService {
       throw new ActiveDashboardRunConflictError(activeImeis);
     }
 
-    this.deviceRepository.clear();
-    this.runtimeRepository.clear();
-    this.logRepository.clear();
-    this.positionRepository.clear();
-    this.configRevisionRepository.clear();
-    this.journeyRepository.clear();
+    await this.store.archiveDashboardState();
   }
 
   private toDeviceStatus(

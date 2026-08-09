@@ -1,4 +1,4 @@
-import { createConnection, type Socket } from "node:net";
+import { createConnection, createServer, type AddressInfo, type Server, type Socket } from "node:net";
 import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
@@ -12,14 +12,19 @@ import {
   performImeiHandshake,
   runLiveSession,
   startDashboardBackend,
-  type DashboardBackend,
-  type DashboardMessage
+  type DashboardBackend
 } from "../src";
+import type {
+  FrameDecodeFailureInput,
+  FrameIngestInput,
+  FrameIngestStore,
+} from "../src/frame-ingest-store";
 
 const routeFile = join(__dirname, "fixtures", "city-loop.route.json");
 
 describe("dashboard backend", () => {
   const backends: DashboardBackend[] = [];
+  const stores = new WeakMap<DashboardBackend, RecordingFrameIngestStore>();
 
   afterEach(async () => {
     await Promise.allSettled(backends.splice(0).map((backend) => backend.close()));
@@ -30,25 +35,21 @@ describe("dashboard backend", () => {
     expect(formatHttpUrl({ address: "::1", port: 8080 })).toBe("http://[::1]:8080/");
   });
 
-  it("serves a minimal html dashboard shell at the root route", async () => {
+  it("serves a health response without exposing an in-memory message API", async () => {
     const backend = await useBackend();
 
     const response = await fetch(formatHttpUrl(backend.webAddress));
     expect(response.status).toBe(200);
-    expect(response.headers.get("content-type")).toContain("text/html");
+    expect(response.headers.get("content-type")).toContain("application/json");
+    await expect(response.json()).resolves.toEqual({ status: "ok" });
 
-    const html = await response.text();
-    expect(html).toContain("<title>Teltonika Raw And Decoded Dashboard</title>");
-    expect(html).toContain('id="message-list"');
-    expect(html).toContain('id="empty-state"');
-    expect(html).toContain("Waiting for IMEI or AVL packets.");
-    expect(html).toContain('fetch("/messages"');
-    expect(html).toContain("setInterval(refreshMessages, 1000)");
-    expect(html).toContain("Decode Error");
+    const messagesResponse = await fetch(new URL("/messages", formatHttpUrl(backend.webAddress)));
+    expect(messagesResponse.status).toBe(404);
   });
 
-  it("retains accepted imei and decoded avl messages and serves them over http", async () => {
+  it("passes accepted decoded AVL frames to the injected store", async () => {
     const backend = await useBackend();
+    const store = storeFor(backend);
     const controller = new AbortController();
     const sessionPromise = runLiveSession({
       host: backend.tcpAddress.address,
@@ -62,36 +63,17 @@ describe("dashboard backend", () => {
       signal: controller.signal
     });
 
-    await waitFor(() => backend.getMessages().some((message) => message.type === "avl"));
+    await waitFor(() => store.frames.length > 0);
     controller.abort();
     await expect(sessionPromise).resolves.toEqual({ kind: "completed" });
 
-    const messages = backend.getMessages();
-    expect(messages).toHaveLength(2);
-    expect(messages[0]).toMatchObject({
-      type: "imei",
-      imei: "123456789012345",
-      accepted: true
-    });
-    expect(messages[1]).toMatchObject({
-      type: "avl",
+    expect(store.frames).toHaveLength(1);
+    expect(store.frames[0]).toMatchObject({
       imei: "123456789012345"
     });
-    if (messages[1]?.type !== "avl") {
-      throw new Error("expected avl message");
-    }
-
-    expect(messages[1].decoded.recordCount).toBe(1);
-    expect(messages[1].decoded.records).toHaveLength(1);
-
-    const response = await fetch(`${formatHttpUrl(backend.webAddress)}messages`);
-    expect(response.status).toBe(200);
-    const payload = (await response.json()) as { messages: DashboardMessage[] };
-    expect(payload.messages).toHaveLength(2);
-    expect(payload.messages[1]).toMatchObject({
-      type: "avl",
-      imei: "123456789012345"
-    });
+    expect(store.frames[0]?.decoded.recordCount).toBe(1);
+    expect(store.frames[0]?.decoded.records).toHaveLength(1);
+    expect(store.frames[0]?.rawFrame.toString("hex")).toMatch(/^[0-9a-f]+$/);
   });
 
   it("rejects imei handshakes when configured", async () => {
@@ -105,16 +87,23 @@ describe("dashboard backend", () => {
       })
     ).resolves.toEqual({ kind: "rejected" });
 
-    await waitFor(() => backend.getMessages().length === 1);
-    expect(backend.getMessages()[0]).toMatchObject({
-      type: "imei",
-      imei: "123456789012345",
-      accepted: false
-    });
+    expect(storeFor(backend).frames).toEqual([]);
   });
 
-  it("parses fragmented avl frames and retains decoder errors for malformed packets", async () => {
+  it("rejects malformed IMEIs before accepting telemetry", async () => {
     const backend = await useBackend();
+
+    await expect(performImeiHandshake({
+      host: backend.tcpAddress.address,
+      port: backend.tcpAddress.port,
+      imei: "not-an-imei",
+    })).resolves.toEqual({ kind: "rejected" });
+    expect(storeFor(backend).frames).toEqual([]);
+  });
+
+  it("parses fragmented AVL frames and audits decoder errors without acknowledging them", async () => {
+    const backend = await useBackend();
+    const store = storeFor(backend);
     const socket = await connectSocket(backend.tcpAddress.address, backend.tcpAddress.port);
 
     try {
@@ -133,24 +122,95 @@ describe("dashboard backend", () => {
       socket.write(invalidPacket);
       expect(await readBytesWithTimeout(socket, 4, 100)).toBeNull();
 
-      await waitFor(() => backend.getMessages().length === 3);
-      const messages = backend.getMessages();
-      expect(messages.map((message) => message.type)).toEqual(["imei", "avl", "error"]);
-      expect(messages[2]).toMatchObject({
-        type: "error",
+      await waitFor(() => store.decodeFailures.length === 1);
+      expect(store.frames).toHaveLength(1);
+      expect(store.decodeFailures[0]).toMatchObject({
         imei: "123456789012345"
       });
-      if (messages[2]?.type !== "error") {
-        throw new Error("expected decoder error message");
-      }
-
-      expect(messages[2].error.kind).toBe("crc_mismatch");
+      expect(store.decodeFailures[0]?.error.kind).toBe("crc_mismatch");
     } finally {
       socket.destroy();
     }
   });
 
-  async function useBackend(overrides: Partial<Parameters<typeof startDashboardBackend>[0]> = {}) {
+  it("acknowledges a valid frame only after durable persistence resolves", async () => {
+    let releasePersistence = () => {};
+    const persistenceGate = new Promise<void>((resolve) => {
+      releasePersistence = resolve;
+    });
+    const store = new RecordingFrameIngestStore();
+    store.onPersistFrame = () => persistenceGate;
+    const backend = await useBackend({}, store);
+    const socket = await connectSocket(backend.tcpAddress.address, backend.tcpAddress.port);
+
+    try {
+      socket.write(encodeImeiHandshakeFrame("123456789012345"));
+      expect(await readBytes(socket, 1)).toEqual(Buffer.from([0x01]));
+
+      socket.write(buildDryRunPacket());
+      let acknowledged = false;
+      const acknowledgement = readBytes(socket, 4).then((value) => {
+        acknowledged = true;
+        return value;
+      });
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(acknowledged).toBe(false);
+
+      releasePersistence();
+      expect(await acknowledgement).toEqual(Buffer.from([0x00, 0x00, 0x00, 0x01]));
+    } finally {
+      socket.destroy();
+    }
+  });
+
+  it("does not acknowledge a valid frame when persistence fails", async () => {
+    const store = new RecordingFrameIngestStore();
+    store.onPersistFrame = async () => {
+      throw new Error("database unavailable");
+    };
+    const backend = await useBackend({}, store);
+    const socket = await connectSocket(backend.tcpAddress.address, backend.tcpAddress.port);
+
+    socket.write(encodeImeiHandshakeFrame("123456789012345"));
+    expect(await readBytes(socket, 1)).toEqual(Buffer.from([0x01]));
+
+    const receivedAfterHandshake: Buffer[] = [];
+    socket.on("data", (chunk) => receivedAfterHandshake.push(chunk));
+    const closed = new Promise<void>((resolve) => socket.once("close", () => resolve()));
+    socket.write(buildDryRunPacket());
+    await closed;
+
+    expect(Buffer.concat(receivedAfterHandshake)).toHaveLength(0);
+    expect(store.frames).toHaveLength(1);
+  });
+
+  it("releases a successfully bound TCP port when the health port cannot bind", async () => {
+    const targetTcpPort = await findAvailablePort();
+    const healthBlocker = createServer();
+    await listen(healthBlocker, 0);
+    const blockedHealthPort = (healthBlocker.address() as AddressInfo).port;
+
+    try {
+      await expect(startDashboardBackend({
+        host: "127.0.0.1",
+        port: targetTcpPort,
+        webHost: "127.0.0.1",
+        webPort: blockedHealthPort,
+        acceptImei: true,
+      }, new RecordingFrameIngestStore())).rejects.toMatchObject({ code: "EADDRINUSE" });
+
+      const probe = createServer();
+      await listen(probe, targetTcpPort);
+      await closeNetServer(probe);
+    } finally {
+      await closeNetServer(healthBlocker);
+    }
+  });
+
+  async function useBackend(
+    overrides: Partial<Parameters<typeof startDashboardBackend>[0]> = {},
+    store = new RecordingFrameIngestStore(),
+  ) {
     const backend = await startDashboardBackend({
       host: "127.0.0.1",
       port: 0,
@@ -158,11 +218,35 @@ describe("dashboard backend", () => {
       webPort: 0,
       acceptImei: true,
       ...overrides
-    });
+    }, store);
     backends.push(backend);
+    stores.set(backend, store);
     return backend;
   }
+
+  function storeFor(backend: DashboardBackend): RecordingFrameIngestStore {
+    const store = stores.get(backend);
+    if (!store) {
+      throw new Error("Missing test frame store.");
+    }
+    return store;
+  }
 });
+
+class RecordingFrameIngestStore implements FrameIngestStore {
+  readonly frames: FrameIngestInput[] = [];
+  readonly decodeFailures: FrameDecodeFailureInput[] = [];
+  onPersistFrame?: (input: FrameIngestInput) => Promise<void>;
+
+  async persistFrame(input: FrameIngestInput): Promise<void> {
+    this.frames.push(input);
+    await this.onPersistFrame?.(input);
+  }
+
+  async auditDecodeFailure(input: FrameDecodeFailureInput): Promise<void> {
+    this.decodeFailures.push(input);
+  }
+}
 
 function buildDryRunPacket(): Buffer {
   const result = parseConfig(
@@ -272,4 +356,28 @@ async function waitFor(predicate: () => boolean, timeoutMs = 1_000): Promise<voi
 
     await new Promise((resolve) => setTimeout(resolve, 5));
   }
+}
+
+async function findAvailablePort(): Promise<number> {
+  const server = createServer();
+  await listen(server, 0);
+  const port = (server.address() as AddressInfo).port;
+  await closeNetServer(server);
+  return port;
+}
+
+function listen(server: Server, port: number): Promise<void> {
+  return new Promise((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(port, "127.0.0.1", () => {
+      server.off("error", reject);
+      resolve();
+    });
+  });
+}
+
+function closeNetServer(server: Server): Promise<void> {
+  return new Promise((resolve, reject) => {
+    server.close((error) => error ? reject(error) : resolve());
+  });
 }

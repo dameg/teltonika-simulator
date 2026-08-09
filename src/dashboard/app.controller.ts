@@ -1,4 +1,4 @@
-import { Controller, Get, Header, Inject } from "@nestjs/common";
+import { Controller, Get, Header, Inject, ServiceUnavailableException } from "@nestjs/common";
 
 import { AppService } from "./app.service";
 
@@ -12,8 +12,15 @@ export class AppController {
     return this.appService.renderShellHtml();
   }
 
-  @Get("api/health")
-  getHealth() {
-    return this.appService.getHealth();
+  @Get(["api/health", "api/health/live"])
+  getLiveness() {
+    return this.appService.getLiveness();
+  }
+
+  @Get("api/health/ready")
+  async getReadiness() {
+    const readiness = await this.appService.getReadiness();
+    if (readiness.status !== "ok") throw new ServiceUnavailableException(readiness);
+    return readiness;
   }
 }

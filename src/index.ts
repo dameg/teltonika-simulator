@@ -6,6 +6,17 @@ import { runMultiDeviceRuntime } from "./multi-device-runtime";
 
 export { helpText, parseConfig } from "./config";
 export { startDashboardBackend } from "./dashboard-backend";
+export type {
+  FrameDecodeFailureInput,
+  FrameIngestInput,
+  FrameIngestStore,
+} from "./frame-ingest-store";
+export {
+  DatabaseModule,
+  DatabaseService,
+  PostgresFrameStore,
+  PostgresDashboardStore,
+} from "./dashboard/persistence";
 export {
   InMemoryDashboardConfigRevisionRepository,
   InMemoryDashboardDeviceRepository,

@@ -1,30 +1,26 @@
 import { Module } from "@nestjs/common";
 
+import { DatabaseModule } from "./persistence/database.module";
 import {
-  InMemoryDashboardDeviceRepository,
-  InMemoryDashboardConfigRevisionRepository,
-  InMemoryDashboardJourneyRepository,
-  InMemoryDashboardLogRepository,
-  InMemoryDashboardPositionRepository,
-  InMemoryDashboardRuntimeRepository,
-} from "./repositories";
+  DASHBOARD_STORE,
+  PostgresDashboardStore,
+} from "./persistence/dashboard-store";
+import { PostgresFrameStore } from "./persistence/frame-store";
+import { RuntimeConfigRegistry } from "./runtime/runtime-config-registry";
 
 @Module({
+  imports: [DatabaseModule],
   providers: [
-    InMemoryDashboardDeviceRepository,
-    InMemoryDashboardConfigRevisionRepository,
-    InMemoryDashboardJourneyRepository,
-    InMemoryDashboardRuntimeRepository,
-    InMemoryDashboardLogRepository,
-    InMemoryDashboardPositionRepository,
+    PostgresDashboardStore,
+    PostgresFrameStore,
+    RuntimeConfigRegistry,
+    { provide: DASHBOARD_STORE, useExisting: PostgresDashboardStore },
   ],
   exports: [
-    InMemoryDashboardDeviceRepository,
-    InMemoryDashboardConfigRevisionRepository,
-    InMemoryDashboardJourneyRepository,
-    InMemoryDashboardRuntimeRepository,
-    InMemoryDashboardLogRepository,
-    InMemoryDashboardPositionRepository,
+    DASHBOARD_STORE,
+    PostgresDashboardStore,
+    PostgresFrameStore,
+    RuntimeConfigRegistry,
   ],
 })
 export class DashboardRepositoriesModule {}

@@ -1,13 +1,23 @@
-import { Injectable } from "@nestjs/common";
+import { Inject, Injectable } from "@nestjs/common";
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
+import { DatabaseService } from "./persistence/database.service";
 
 @Injectable()
 export class AppService {
-  getHealth() {
+  constructor(@Inject(DatabaseService) private readonly database: DatabaseService) {}
+
+  getLiveness() {
     return {
       status: "ok",
       app: "teltonika-device-control-dashboard"
+    };
+  }
+
+  async getReadiness() {
+    return {
+      status: await this.database.isReady() ? "ok" : "unavailable",
+      database: "postgresql",
     };
   }
 
