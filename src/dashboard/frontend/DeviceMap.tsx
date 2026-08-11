@@ -138,8 +138,8 @@ export const DeviceMap = memo(function DeviceMap({
         const isSelected = position.id === selectedPositionId;
         const marker = L.circleMarker([position.latitude, position.longitude], {
           radius: isSelected ? SELECTED_HISTORY_POINT_RADIUS : HISTORY_POINT_RADIUS,
-          color: isSelected ? "#172033" : "#0b4a7d",
-          fillColor: isSelected ? "#f59f00" : "#ffffff",
+          color: isSelected ? "#102832" : "#087f8c",
+          fillColor: isSelected ? "#f28c28" : "#ffffff",
           fillOpacity: 1,
           weight: isSelected ? 3 : 2,
         }).bindTooltip(`${formatDateTime(position.timestampMs)} · ${position.speedKph} km/h`);
