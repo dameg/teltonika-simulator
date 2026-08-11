@@ -30,6 +30,7 @@ describe("dashboard telemetry history mapping", () => {
       },
       [
         { ioId: 239, ioSizeBytes: 1, numericValue: "1", byteaValue: null },
+        { ioId: 69, ioSizeBytes: 1, numericValue: "2", byteaValue: null },
         { ioId: 66, ioSizeBytes: 2, numericValue: "13800", byteaValue: null },
         { ioId: 192, ioSizeBytes: 4, numericValue: "500123456", byteaValue: null },
         { ioId: 78, ioSizeBytes: 8, numericValue: "18446744073709551615", byteaValue: null },
@@ -49,6 +50,7 @@ describe("dashboard telemetry history mapping", () => {
         key: "status",
         fields: expect.arrayContaining([
           expect.objectContaining({ key: "ignition", value: true, ioId: 239 }),
+          expect.objectContaining({ key: "gpsFix", value: 2, displayValue: "Unavailable", ioId: 69 }),
         ]),
       }),
       expect.objectContaining({

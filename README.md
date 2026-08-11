@@ -180,26 +180,20 @@ The dashboard slider accepts values from `-10` to `10`:
 
 The transmission cadence remains unchanged. The simulation clock and physics step are scaled together, keeping position, mileage, speed, and timestamps consistent.
 
-## Teltonika FMC650
+## Teltonika Device Profiles
 
-Select the `fmc650-fms` profile to generate FMS/J1939 data using FMC650 AVL identifiers published by Teltonika.
+Use `--device-profile` or the dashboard device-profile selector to choose a Codec 8 Extended mapping:
 
-Included telemetry:
+| CLI name | Model | Model-specific telemetry |
+|---|---|---|
+| `fmc003` | Teltonika FMC003 | fuel used, total and trip odometers, engine load, RPM, vehicle speed, throttle, and fuel level |
+| `fmc150` | Teltonika FMC150 | speed, throttle, fuel consumption, RPM, total mileage, fuel level, axle loads, brake, clutch, cruise control, and PTO |
+| `fmc250` | Teltonika FMC250 | the same CAN telemetry set as FMC150, using a separate model profile |
+| `fmc650-fms` | Teltonika FMC650 | FMS/J1939 brake, speed, cruise control, clutch, PTO, throttle, engine load, fuel, RPM, axle weights, and odometers |
 
-- brake switch;
-- wheel-based speed;
-- cruise control;
-- clutch switch;
-- PTO state;
-- accelerator pedal position;
-- engine load;
-- total fuel used;
-- fuel level;
-- engine RPM;
-- axle weights;
-- total odometer and trip distance.
+All profiles include ignition (AVL 239), movement (240), external voltage (66), battery voltage (67), GNSS status (69), idling events (251), and harsh acceleration or braking events (253). AVL 69 uses `1` for a GPS fix and `2` for GNSS without a fix. Loss and recovery of a fix both use Event IO ID 69.
 
-The profile enforces the FMC650-defined 1-, 2-, and 4-byte element sizes even when the current value would fit in a smaller field.
+Each mapping declares its 1-, 2-, or 4-byte element size explicitly, even when the current value would fit in a smaller field. FMC150 and FMC250 intentionally do not map engine load or trip distance because their published CAN tables do not provide semantically equivalent IDs for those simulator fields.
 
 ## Predefined Routes
 
@@ -294,7 +288,7 @@ IMEIs may also be comma-separated. Each IMEI receives an independent session and
 | `--route-file <path>` | Route JSON file |
 | `--driving-style <name>` | `eco`, `normal`, or `aggressive` |
 | `--seed <integer>` | Deterministic simulation seed |
-| `--device-profile <name>` | `default-codec8e` or `fmc650-fms` |
+| `--device-profile <name>` | `default-codec8e`, `fmc003`, `fmc150`, `fmc250`, or `fmc650-fms` |
 | `--count <n>` | Packet limit |
 | `--dry-run` | Generate packets without TCP |
 | `--help` | Display CLI help |
@@ -351,7 +345,7 @@ npm run build
 npm test
 ```
 
-The test suite covers CRC, Codec 8E round trips, IMEI handshake, acknowledgements, deterministic simulation, route geometry, FMC650 mapping, reconnect behavior, multi-device sessions, dashboard APIs, map track selection, and parser-visible end-to-end flows.
+The test suite covers CRC, Codec 8E round trips, IMEI handshake, acknowledgements, deterministic simulation, route geometry, FMC003/FMC150/FMC250/FMC650 mapping, reconnect behavior, multi-device sessions, dashboard APIs, map track selection, and parser-visible end-to-end flows.
 
 ## Current Limitations
 
@@ -361,10 +355,13 @@ The test suite covers CRC, Codec 8E round trips, IMEI handshake, acknowledgement
 - no server-to-device command simulation;
 - no route generator in the dashboard;
 - routes loop instead of completing at the destination;
-- FMC650 values are simulated from vehicle state rather than read from a physical CAN bus.
+- device-profile values are simulated from vehicle state rather than read from a physical CAN bus.
 
 ## Sources
 
+- [Teltonika FMC003 Data Sending Parameters ID](https://wiki.teltonika-gps.com/view/FMC003_Teltonika_Data_Sending_Parameters_ID)
+- [Teltonika FMC150 Data Sending Parameters ID](https://wiki.teltonika-gps.com/view/FMC150_Teltonika_Data_Sending_Parameters_ID)
+- [Teltonika FMC250 Data Sending Parameters ID](https://wiki.teltonika-gps.com/view/FMC250_Teltonika_Data_Sending_Parameters_ID)
 - [Teltonika FMC650 Data Sending Parameters ID](https://wiki.teltonika-gps.com/view/FMC650_Teltonika_Data_Sending_Parameters_ID)
 - [OSRM Route Service](https://project-osrm.org/docs/v5.24.0/api/#route-service)
 - [OpenStreetMap copyright and attribution](https://www.openstreetmap.org/copyright)
