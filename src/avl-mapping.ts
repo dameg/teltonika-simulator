@@ -6,7 +6,7 @@ const eventValues = {
   harshBraking: 2,
   idleStarted: 1,
   idleEnded: 0,
-  gpsFixLost: 0,
+  gpsFixLost: 2,
   gpsFixRestored: 1
 } satisfies Record<DrivingEventType, number>;
 
@@ -61,7 +61,7 @@ function valueForMapping(state: VehicleState, source: DeviceProfile["ioMappings"
     case "satellites":
       return state.position.hasGpsFix ? state.position.satellites : 0;
     case "hasGpsFix":
-      return bool(state.position.hasGpsFix);
+      return state.position.hasGpsFix ? 1 : 2;
     case "brakeSwitch":
       return bool(state.brakingMps2 > 0.1);
     case "wheelBasedSpeed":

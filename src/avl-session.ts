@@ -1,4 +1,3 @@
-import { once } from "node:events";
 import type net from "node:net";
 
 import { encodeCodec8ExtendedPacket } from "./codec8-extended";
@@ -11,7 +10,7 @@ export interface AvlPacketSendResult {
 
 export async function sendAvlPacket(
   socket: net.Socket,
-  records: readonly AvlRecord[]
+  records: readonly AvlRecord[],
 ): Promise<AvlPacketSendResult> {
   const expectedRecordCount = records.length;
   const packet = encodeCodec8ExtendedPacket(records);
@@ -19,13 +18,17 @@ export async function sendAvlPacket(
   await writePacket(socket, packet);
 
   try {
-    const acknowledgement = await readAcknowledgement(socket, 4, "Socket closed before AVL acknowledgement was received.");
+    const acknowledgement = await readAcknowledgement(
+      socket,
+      4,
+      "Socket closed before AVL acknowledgement was received.",
+    );
     const acceptedRecordCount = acknowledgement.readUInt32BE(0);
 
     if (acceptedRecordCount !== expectedRecordCount) {
       socket.destroy();
       throw new Error(
-        `AVL acknowledgement count mismatch: expected ${expectedRecordCount} record(s), received ${acceptedRecordCount}.`
+        `AVL acknowledgement count mismatch: expected ${expectedRecordCount} record(s), received ${acceptedRecordCount}.`,
       );
     }
 
@@ -71,7 +74,11 @@ async function writePacket(socket: net.Socket, packet: Buffer): Promise<void> {
   });
 }
 
-async function readAcknowledgement(socket: net.Socket, size: number, closeMessage: string): Promise<Buffer> {
+async function readAcknowledgement(
+  socket: net.Socket,
+  size: number,
+  closeMessage: string,
+): Promise<Buffer> {
   if (socket.destroyed) {
     throw new Error(closeMessage);
   }

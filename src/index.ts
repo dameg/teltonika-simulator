@@ -33,6 +33,9 @@ export {
 } from "./avl-mapping";
 export {
   defaultCodec8ExtendedDeviceProfile,
+  fmc003DeviceProfile,
+  fmc150DeviceProfile,
+  fmc250DeviceProfile,
   fmc650FmsDeviceProfile,
   deviceProfiles,
   getDeviceProfile,

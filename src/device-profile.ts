@@ -1,6 +1,45 @@
 import type { CodecName, DeviceIoMappingRule, DeviceProfile, DrivingEventType, VehicleStateField } from "./domain";
 
 const codec8Extended: CodecName = "codec8e";
+const commonCodec8ExtendedIoMappings = [
+  { ioId: 239, source: "ignitionOn", bytes: 1 },
+  { ioId: 240, source: "movement", bytes: 1 },
+  { ioId: 66, source: "externalVoltageMv", bytes: 2 },
+  { ioId: 67, source: "batteryVoltageMv", bytes: 2 },
+  { ioId: 69, source: "hasGpsFix", bytes: 1 },
+  { ioId: 251, source: "isIdling", bytes: 1 },
+  { ioId: 253, source: "harshAcceleration", bytes: 1 },
+  { ioId: 253, source: "harshBraking", bytes: 1 }
+] satisfies readonly DeviceIoMappingRule[];
+
+const defaultCodec8ExtendedEventIoIds = {
+  harshAcceleration: 253,
+  harshBraking: 253,
+  idleStarted: 251,
+  gpsFixLost: 69,
+  gpsFixRestored: 69
+} satisfies Partial<Record<DrivingEventType, number>>;
+
+const fmc003Fmc150AndFmc250EventIoIds = {
+  ...defaultCodec8ExtendedEventIoIds,
+  idleEnded: 251
+} satisfies Partial<Record<DrivingEventType, number>>;
+
+const fmc150AndFmc250CanIoMappings = [
+  { ioId: 81, source: "wheelBasedSpeed", bytes: 1 },
+  { ioId: 82, source: "acceleratorPedalPosition", bytes: 1 },
+  { ioId: 83, source: "engineTotalFuelUsed", bytes: 4 },
+  { ioId: 85, source: "engineRpm", bytes: 2 },
+  { ioId: 87, source: "totalOdometerMeters", bytes: 4 },
+  { ioId: 89, source: "fuelLevelPercent", bytes: 1 },
+  { ioId: 118, source: "axleWeight1", bytes: 2 },
+  { ioId: 119, source: "axleWeight2", bytes: 2 },
+  { ioId: 120, source: "axleWeight3", bytes: 2 },
+  { ioId: 910, source: "brakeSwitch", bytes: 1 },
+  { ioId: 911, source: "clutchSwitch", bytes: 1 },
+  { ioId: 937, source: "cruiseControlActive", bytes: 1 },
+  { ioId: 946, source: "ptoState", bytes: 1 }
+] satisfies readonly DeviceIoMappingRule[];
 const validSources = new Set<VehicleStateField | DrivingEventType>([
   "ignitionOn",
   "movement",
@@ -42,23 +81,45 @@ export const defaultCodec8ExtendedDeviceProfile = {
     externalVoltageMv: 13_800,
     batteryVoltageMv: 4_100
   },
+  ioMappings: commonCodec8ExtendedIoMappings,
+  eventIoIds: defaultCodec8ExtendedEventIoIds
+} satisfies DeviceProfile;
+
+export const fmc003DeviceProfile = {
+  ...defaultCodec8ExtendedDeviceProfile,
+  name: "fmc003",
+  modelName: "Teltonika FMC003",
+  supportedIoIds: [12, 16, 31, 36, 37, 41, 48, 66, 67, 69, 199, 239, 240, 251, 253],
   ioMappings: [
-    { ioId: 239, source: "ignitionOn" },
-    { ioId: 240, source: "movement" },
-    { ioId: 66, source: "externalVoltageMv" },
-    { ioId: 67, source: "batteryVoltageMv" },
-    { ioId: 251, source: "isIdling" },
-    { ioId: 69, source: "hasGpsFix" },
-    { ioId: 253, source: "harshAcceleration" },
-    { ioId: 253, source: "harshBraking" }
+    ...commonCodec8ExtendedIoMappings,
+    { ioId: 12, source: "engineTotalFuelUsed", bytes: 4 },
+    { ioId: 16, source: "totalOdometerMeters", bytes: 4 },
+    { ioId: 31, source: "engineLoad", bytes: 1 },
+    { ioId: 36, source: "engineRpm", bytes: 2 },
+    { ioId: 37, source: "wheelBasedSpeed", bytes: 1 },
+    { ioId: 41, source: "acceleratorPedalPosition", bytes: 1 },
+    { ioId: 48, source: "fuelLevelPercent", bytes: 1 },
+    { ioId: 199, source: "tripDistanceMeters", bytes: 4 }
   ],
-  eventIoIds: {
-    harshAcceleration: 253,
-    harshBraking: 253,
-    idleStarted: 251,
-    gpsFixLost: 69,
-    gpsFixRestored: 69
-  }
+  eventIoIds: fmc003Fmc150AndFmc250EventIoIds
+} satisfies DeviceProfile;
+
+export const fmc150DeviceProfile = {
+  ...defaultCodec8ExtendedDeviceProfile,
+  name: "fmc150",
+  modelName: "Teltonika FMC150",
+  supportedIoIds: [66, 67, 69, 81, 82, 83, 85, 87, 89, 118, 119, 120, 239, 240, 251, 253, 910, 911, 937, 946],
+  ioMappings: [...commonCodec8ExtendedIoMappings, ...fmc150AndFmc250CanIoMappings],
+  eventIoIds: fmc003Fmc150AndFmc250EventIoIds
+} satisfies DeviceProfile;
+
+export const fmc250DeviceProfile = {
+  ...defaultCodec8ExtendedDeviceProfile,
+  name: "fmc250",
+  modelName: "Teltonika FMC250",
+  supportedIoIds: [66, 67, 69, 81, 82, 83, 85, 87, 89, 118, 119, 120, 239, 240, 251, 253, 910, 911, 937, 946],
+  ioMappings: [...commonCodec8ExtendedIoMappings, ...fmc150AndFmc250CanIoMappings],
+  eventIoIds: fmc003Fmc150AndFmc250EventIoIds
 } satisfies DeviceProfile;
 
 export const fmc650FmsDeviceProfile = {
@@ -88,6 +149,9 @@ export const fmc650FmsDeviceProfile = {
 
 export const deviceProfiles = {
   [defaultCodec8ExtendedDeviceProfile.name]: defaultCodec8ExtendedDeviceProfile,
+  [fmc003DeviceProfile.name]: fmc003DeviceProfile,
+  [fmc150DeviceProfile.name]: fmc150DeviceProfile,
+  [fmc250DeviceProfile.name]: fmc250DeviceProfile,
   [fmc650FmsDeviceProfile.name]: fmc650FmsDeviceProfile,
 } satisfies Record<string, DeviceProfile>;
 

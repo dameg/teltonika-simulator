@@ -27,7 +27,7 @@ const groupDefinitions: readonly { key: TelemetryGroupKey; label: string }[] = [
 const ioParameters: Readonly<Record<number, IoParameterDefinition>> = {
   66: numeric("externalVoltage", "External voltage", "power", "V", (value) => value / 1_000, 3),
   67: numeric("batteryVoltage", "Battery voltage", "power", "V", (value) => value / 1_000, 3),
-  69: booleanParameter("gpsFix", "GPS fix", "status", "Available", "Unavailable"),
+  69: enumParameter("gpsFix", "GPS fix", "status", { 1: "Available", 2: "Unavailable" }),
   79: booleanParameter("brakeSwitch", "Brake pedal", "status", "Pressed", "Released"),
   80: numeric("wheelBasedSpeed", "Wheel-based speed", "engine", "km/h"),
   81: booleanParameter("cruiseControl", "Cruise control", "status", "On", "Off"),

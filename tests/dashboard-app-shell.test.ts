@@ -50,6 +50,9 @@ describe("dashboard app shell", () => {
     expect(frontendBundle).toContain("Teltonika Simulator");
     expect(frontendBundle).toContain("Device setup");
     expect(frontendBundle).toContain("FMC650 test device");
+    expect(frontendBundle).toContain("fmc003");
+    expect(frontendBundle).toContain("fmc150");
+    expect(frontendBundle).toContain("fmc250");
     expect(frontendBundle).toContain("Generate IMEI");
     expect(frontendBundle).toContain("Start all");
     expect(frontendBundle).toContain("Recent logs");
