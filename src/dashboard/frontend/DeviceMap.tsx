@@ -51,6 +51,8 @@ interface MapLayers {
 const ROUTE_LABEL_MIN_ZOOM = 14;
 const MAX_RENDERED_POINTS_PER_SEGMENT = 800;
 const MAX_HISTORY_POINT_MARKERS = 500;
+const HISTORY_POINT_RADIUS = 5;
+const SELECTED_HISTORY_POINT_RADIUS = 8;
 
 export const DeviceMap = memo(function DeviceMap({
   devices,
@@ -135,11 +137,11 @@ export const DeviceMap = memo(function DeviceMap({
       for (const position of sampled) {
         const isSelected = position.id === selectedPositionId;
         const marker = L.circleMarker([position.latitude, position.longitude], {
-          radius: isSelected ? 7 : 3,
-          color: isSelected ? "#172033" : "#225ea8",
+          radius: isSelected ? SELECTED_HISTORY_POINT_RADIUS : HISTORY_POINT_RADIUS,
+          color: isSelected ? "#172033" : "#0b4a7d",
           fillColor: isSelected ? "#f59f00" : "#ffffff",
-          fillOpacity: isSelected ? 1 : 0.8,
-          weight: isSelected ? 3 : 1.5,
+          fillOpacity: 1,
+          weight: isSelected ? 3 : 2,
         }).bindTooltip(`${formatDateTime(position.timestampMs)} · ${position.speedKph} km/h`);
         if (onSelectPosition) marker.on("click", () => onSelectPosition(position));
         marker.addTo(layers.markers);
@@ -157,6 +159,11 @@ export const DeviceMap = memo(function DeviceMap({
         weight: 5,
       }).addTo(layers.tracks);
     }
+
+    // Track polylines are added after the point markers and would otherwise cover them.
+    layers.markers.eachLayer((layer) => {
+      if (layer instanceof L.Path) layer.bringToFront();
+    });
 
     if (variant === "live") {
       for (const trip of grouped.trips) {
