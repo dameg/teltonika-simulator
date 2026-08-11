@@ -1,259 +1,76 @@
 # Teltonika GPS Device Simulator
 
-A deterministic, multi-device Teltonika simulator with a local control dashboard, live OpenStreetMap tracking, reusable European road routes, and FMC650 FMS/J1939 telemetry.
+Symulator urządzeń Teltonika GPS. Generuje deterministyczne dane pojazdów,
+koduje je jako pakiety Teltonika Codec 8 Extended i wysyła przez TCP do
+skonfigurowanego parsera.
 
-The simulator first models a virtual vehicle. It maps the vehicle state to Teltonika AVL elements and encodes Codec 8 Extended packets.
-The simulator sends these packets to the durable dashboard parser or another configured TCP parser.
+Projekt zawiera także dashboard do konfiguracji urządzeń, uruchamiania sesji,
+podglądu pozycji na mapie oraz przeglądania zapisanych ramek i telemetrii.
 
-## Highlights
+## Możliwości
 
-- Teltonika IMEI handshake over TCP
-- Codec 8 Extended (`0x8E`) encoding and decoding
-- CRC-16/IBM and AVL acknowledgement validation
-- deterministic vehicle simulation driven by route, style, seed, and interval
-- `eco`, `normal`, and `aggressive` driving profiles
-- Teltonika FMC650 FMS/J1939 profile
-- multiple independent devices and reconnect handling
-- React dashboard for configuration and runtime control
-- live OpenStreetMap positions and multi-device tracks
-- expandable JSON and raw hexadecimal packet previews
-- reusable Kraków–Berlin and Munich–Rome road routes
-- CLI and dry-run packet generation
+- symulacja jednego lub wielu niezależnych urządzeń;
+- deterministyczna trasa, prędkość i zdarzenia na podstawie seed;
+- style jazdy: `eco`, `normal` i `aggressive`;
+- komunikacja TCP z handshake IMEI i pakietami Codec 8 Extended;
+- lokalny dashboard z historią sesji, tras i ramek;
+- gotowe trasy Kraków–Berlin oraz Monachium–Rzym;
+- tryb `--dry-run` do generowania pakietów bez połączenia TCP.
 
-## Quick Start
+## Wymagania
+
+- Node.js 20 lub nowszy;
+- npm;
+- Docker, jeśli używasz dashboardu z lokalną bazą PostgreSQL.
+
+## Szybki start
+
+Zainstaluj zależności, uruchom bazę, migracje i dashboard:
 
 ```bash
 npm install
-npm run db:up
-export DATABASE_URL=postgresql://teltonika:teltonika-local@127.0.0.1:5432/teltonika
-npm run db:migrate
-npm run dev
+npm run dev:db
 ```
 
-PostgreSQL 17 runs in Docker and stores its data in the named
-`teltonika-postgres-data` volume. If you want different local credentials or a different port, copy `.env.example` to `.env`.
-Export the resulting `DATABASE_URL`
-before running migrations or the dashboard.
+Następnie otwórz [http://localhost:3000](http://localhost:3000).
 
-`dev` builds the frontend automatically at startup and watches both
-the dashboard backend and frontend sources. Refresh the browser after a
-frontend change.
+Dashboard uruchamia również lokalny parser TCP pod adresem
+`127.0.0.1:5027`.
 
-For a production-style local run, use `npm run build` followed by
-`npm run dashboard`.
+## Profile urządzeń
 
-Open:
+Wybierz profil w dashboardzie lub podaj go przez `--device-profile`.
+Wszystkie profile używają protokołu Codec 8 Extended.
 
-```text
-http://localhost:3000
-```
-
-`npm run dev` also starts the durable TCP parser at `127.0.0.1:5027`.
-Frames, decode errors, trips, and telemetry are available in the unified
-dashboard and its `/api/frames`, `/api/trips`, and `/api/records` endpoints.
-
-## Dashboard
-
-The dashboard supports:
-
-- creating, editing, and deleting devices;
-- generating a random 15-digit IMEI;
-- bulk IMEI import;
-- selecting predefined routes and device profiles;
-- configuring parser address, packet interval, retry delay, packet limit, seed, and driving style;
-- scaling simulation time from `0.1×` to `10×`;
-- starting one device, selected devices, or every inactive device;
-- stopping sessions and monitoring lifecycle status;
-- viewing multiple live device tracks in different colors;
-- filtering durable operational logs.
-- selecting stored trips, viewing their routes, and inspecting point telemetry.
-- auditing raw frames, decode results, and retransmission receptions through the history API.
-
-Default form values:
-
-| Setting | Default |
-|---|---|
-| Parser | `127.0.0.1:5027` |
-| Packet interval | `1000 ms` |
-| Reconnect delay | `3000 ms` |
-| Route | Kraków → Berlin |
-| Device profile | `fmc650-fms` |
-| Driving style | `normal` |
-| Seed | `1` |
-| Simulation speed | `0` — real time |
-| Packet limit | `1000` |
-
-Dashboard devices, configuration history, trips, raw AVL frames, decoded AVL
-records, IO telemetry, and logs are stored in PostgreSQL and remain available
-after the application restarts. Clearing logs hides them from the dashboard
-without deleting the underlying audit data.
-
-## PostgreSQL
-
-Start the durable development database and apply pending migrations:
-
-```bash
-npm run db:up
-export DATABASE_URL=postgresql://teltonika:teltonika-local@127.0.0.1:5432/teltonika
-npm run db:migrate
-```
-
-Stop the containers without deleting the database volume:
-
-```bash
-npm run db:down
-```
-
-To run database integration tests against an isolated temporary instance:
-
-```bash
-npm run db:test:up
-export TEST_DATABASE_URL=postgresql://teltonika_test:teltonika-test@127.0.0.1:5433/teltonika_test
-npm run db:test:migrate
-export DATABASE_URL=$TEST_DATABASE_URL
-npm run test:integration
-```
-
-The `postgres-test` service uses a temporary filesystem. Its data disappears when the container is removed.
-CAUTION: If you want to keep the development database, do not run `docker compose down -v`. This command deletes the database volume.
-
-## How It Works
-
-```text
-route + driving style + seed + simulation speed
-                       |
-                       v
-           vehicle simulation engine
-                       |
-                       v
-             device profile mapping
-                       |
-                       v
-                  AVL record
-                       |
-                       v
-          Codec 8E + CRC + TCP frame
-                       |
-                       v
-       durable parser + PostgreSQL commit
-                       |
-                       v
-                 device ACK
-                       |
-                       v
-       history API + dashboard logs/map
-```
-
-Simulation, device mapping, protocol encoding, networking, and dashboard storage remain separate modules.
-
-## Vehicle Simulation
-
-The engine generates:
-
-- interpolated GPS position and heading;
-- speed, acceleration, and braking;
-- ignition and movement state;
-- stops and idling;
-- harsh acceleration and braking events;
-- trip distance and total odometer progression;
-- voltage and FMC650 vehicle telemetry.
-
-### Driving Styles
-
-- `eco` — gentler acceleration and less aggressive behavior
-- `normal` — balanced default behavior
-- `aggressive` — faster acceleration, more variation, and more harsh events
-
-### Seed
-
-The seed controls deterministic pseudo-random behavior such as speed variation, idling, and driving events.
-
-The same route, driving style, seed, and interval produce the same telemetry sequence. Changing only the seed creates another repeatable variation of the same trip.
-
-### Simulation Speed
-
-The dashboard slider accepts values from `-10` to `10`:
-
-- `-10` means `0.1×` real time;
-- `0` means `1×`;
-- `10` means `10×`.
-
-The transmission cadence remains unchanged. The simulation clock and physics step are scaled together, keeping position, mileage, speed, and timestamps consistent.
-
-## Teltonika Device Profiles
-
-Use `--device-profile` or the dashboard device-profile selector to choose a Codec 8 Extended mapping:
-
-| CLI name | Model | Model-specific telemetry |
+| Nazwa profilu | Model | Symulowane dane specyficzne dla modelu |
 |---|---|---|
-| `fmc003` | Teltonika FMC003 | fuel used, total and trip odometers, engine load, RPM, vehicle speed, throttle, and fuel level |
-| `fmc150` | Teltonika FMC150 | speed, throttle, fuel consumption, RPM, total mileage, fuel level, axle loads, brake, clutch, cruise control, and PTO |
-| `fmc250` | Teltonika FMC250 | the same CAN telemetry set as FMC150, using a separate model profile |
-| `fmc650-fms` | Teltonika FMC650 | FMS/J1939 brake, speed, cruise control, clutch, PTO, throttle, engine load, fuel, RPM, axle weights, and odometers |
+| `default-codec8e` | Domyślny Codec 8 Extended | Podstawowe dane GPS, zapłon, ruch, napięcie i zdarzenia jazdy |
+| `fmc003` | Teltonika FMC003 | Paliwo, przebieg, obciążenie silnika, RPM, prędkość i pozycja pedału gazu |
+| `fmc150` | Teltonika FMC150 | Dane CAN: prędkość, paliwo, RPM, przebieg, hamulec, sprzęgło, tempomat i PTO |
+| `fmc250` | Teltonika FMC250 | Dane CAN jak dla FMC150, w osobnym profilu urządzenia |
+| `fmc650-fms` | Teltonika FMC650 FMS/J1939 | Dane FMS/J1939: hamulec, prędkość, paliwo, RPM, osie, PTO i przebiegi |
 
-All profiles include ignition (AVL 239), movement (240), external voltage (66), battery voltage (67), GNSS status (69), idling events (251), and harsh acceleration or braking events (253). AVL 69 uses `1` for a GPS fix and `2` for GNSS without a fix. Loss and recovery of a fix both use Event IO ID 69.
+## Podstawowe komendy
 
-Each mapping declares its 1-, 2-, or 4-byte element size explicitly, even when the current value would fit in a smaller field. FMC150 and FMC250 intentionally do not map engine load or trip distance because their published CAN tables do not provide semantically equivalent IDs for those simulator fields.
+| Komenda | Opis |
+|---|---|
+| `npm run dev:db` | Uruchamia lokalną bazę, migracje i dashboard |
+| `npm run build` | Buduje aplikację i CLI |
+| `npm run dashboard` | Uruchamia zbudowany dashboard |
+| `npm run cli -- --help` | Pokazuje opcje symulatora |
+| `npm run typecheck` | Sprawdza typy TypeScript |
+| `npm test` | Uruchamia testy |
+| `npm run db:down` | Zatrzymuje lokalną bazę danych |
 
-## Predefined Routes
+## Uruchomienie symulatora z CLI
 
-| Route | File | Distance | GPS points |
-|---|---|---:|---:|
-| Small city loop | `tests/fixtures/city-loop.route.json` | local | 3 |
-| Kraków → Berlin | `routes/krakow-berlin.route.json` | 605.6 km | 1,383 |
-| Munich → Rome | `routes/munich-rome.route.json` | 915.7 km | 2,206 |
-
-The long routes were generated from OSRM/OpenStreetMap road geometry. Every fifth source geometry point was retained, keeping the calculated distance error below `0.3%`. Segment speeds are derived from OSRM annotations.
-
-Routes currently loop from the last point back to the first point.
-
-### Route File Format
-
-```json
-{
-  "metadata": {
-    "id": "example-route",
-    "name": "Example route",
-    "description": "Reusable simulator route"
-  },
-  "points": [
-    {
-      "latitude": 50.049649,
-      "longitude": 19.944352,
-      "altitudeMeters": 220,
-      "speedLimitKph": 50
-    },
-    {
-      "latitude": 50.0501,
-      "longitude": 19.9435,
-      "speedLimitKph": 30,
-      "stopDurationMs": 10000
-    }
-  ]
-}
-```
-
-Required fields:
-
-- `metadata.id`;
-- a non-empty `points` array;
-- `latitude` and `longitude` for every point.
-
-Optional point fields:
-
-- `altitudeMeters`;
-- `speedLimitKph`;
-- `stopDurationMs`.
-
-## CLI
-
-Build the project before running the compiled CLI:
+Najpierw zbuduj projekt:
 
 ```bash
 npm run build
 ```
 
-Single device:
+Następnie uruchom urządzenie i wyślij dane do parsera:
 
 ```bash
 npm run cli -- \
@@ -264,104 +81,22 @@ npm run cli -- \
   --device-profile fmc650-fms
 ```
 
-Multiple devices:
+Dodaj kolejne `--imei`, aby uruchomić wiele urządzeń. Użyj
+`--driving-style eco`, `normal` lub `aggressive`, aby wybrać styl jazdy.
+
+## Generowanie pakietów bez połączenia TCP
+
+Tryb dry run zapisuje pakiety w standardowym wyjściu i nie otwiera połączenia
+sieciowego:
 
 ```bash
 npm run cli -- \
   --host 127.0.0.1 \
   --port 5027 \
   --imei 356307042441013 \
-  --imei 356307042441014
-```
-
-IMEIs may also be comma-separated. Each IMEI receives an independent session and a deterministic per-device seed.
-
-### CLI Options
-
-| Option | Description |
-|---|---|
-| `--host <host>` | Parser host |
-| `--port <port>` | Parser TCP port |
-| `--imei <imei>` | Repeatable or comma-separated IMEI |
-| `--interval-ms <ms>` | Packet interval, default `1000` |
-| `--reconnect-delay-ms <ms>` | Retry delay after transport errors |
-| `--route-file <path>` | Route JSON file |
-| `--driving-style <name>` | `eco`, `normal`, or `aggressive` |
-| `--seed <integer>` | Deterministic simulation seed |
-| `--device-profile <name>` | `default-codec8e`, `fmc003`, `fmc150`, `fmc250`, or `fmc650-fms` |
-| `--count <n>` | Packet limit |
-| `--dry-run` | Generate packets without TCP |
-| `--help` | Display CLI help |
-
-CLI flags override their corresponding environment variables.
-
-## Dry Run
-
-Dry-run mode generates packets without opening a network connection:
-
-```bash
-npm run cli -- \
-  --host 127.0.0.1 \
-  --port 5027 \
-  --imei 356307042441013 \
-  --route-file routes/munich-rome.route.json \
-  --device-profile fmc650-fms \
-  --driving-style eco \
-  --seed 42 \
+  --device-profile fmc003 \
   --dry-run \
   --count 3
 ```
 
-Packet hex is written to stdout. Dry-run is useful for fixture generation, parser debugging, and deterministic packet comparison.
-
-## Reconnect Behavior
-
-Live sessions reconnect after recoverable socket failures such as connection refusal, reset, and timeout. They do not reconnect after:
-
-- IMEI rejection;
-- protocol failures such as an AVL acknowledgement count mismatch.
-
-## Project Structure
-
-| Area | Files |
-|---|---|
-| Domain models | `src/domain.ts` |
-| Routes and geometry | `src/route.ts` |
-| Vehicle simulation | `src/simulation.ts`, `src/driving-style.ts` |
-| Device profiles | `src/device-profile.ts`, `src/avl-mapping.ts` |
-| Codec and CRC | `src/codec8-extended.ts`, `src/codec8-extended-decoder.ts`, `src/codec-crc.ts` |
-| TCP sessions | `src/imei-handshake.ts`, `src/avl-session.ts`, `src/live-session.ts` |
-| Multi-device runtime | `src/multi-device-runtime.ts` |
-| Dashboard API | `src/dashboard/` |
-| PostgreSQL persistence | `src/dashboard/persistence/`, `migrations/`, `compose.yaml` |
-| React dashboard and map | `src/dashboard/frontend/` |
-| Tests | `tests/` |
-
-## Verification
-
-```bash
-npm run typecheck
-npm run build
-npm test
-```
-
-The test suite covers CRC, Codec 8E round trips, IMEI handshake, acknowledgements, deterministic simulation, route geometry, FMC003/FMC150/FMC250/FMC650 mapping, reconnect behavior, multi-device sessions, dashboard APIs, map track selection, and parser-visible end-to-end flows.
-
-## Current Limitations
-
-- TCP and Codec 8 Extended only;
-- no UDP or TLS;
-- no built-in database backup or retention scheduler;
-- no server-to-device command simulation;
-- no route generator in the dashboard;
-- routes loop instead of completing at the destination;
-- device-profile values are simulated from vehicle state rather than read from a physical CAN bus.
-
-## Sources
-
-- [Teltonika FMC003 Data Sending Parameters ID](https://wiki.teltonika-gps.com/view/FMC003_Teltonika_Data_Sending_Parameters_ID)
-- [Teltonika FMC150 Data Sending Parameters ID](https://wiki.teltonika-gps.com/view/FMC150_Teltonika_Data_Sending_Parameters_ID)
-- [Teltonika FMC250 Data Sending Parameters ID](https://wiki.teltonika-gps.com/view/FMC250_Teltonika_Data_Sending_Parameters_ID)
-- [Teltonika FMC650 Data Sending Parameters ID](https://wiki.teltonika-gps.com/view/FMC650_Teltonika_Data_Sending_Parameters_ID)
-- [OSRM Route Service](https://project-osrm.org/docs/v5.24.0/api/#route-service)
-- [OpenStreetMap copyright and attribution](https://www.openstreetmap.org/copyright)
+Pełną listę opcji wyświetla polecenie `npm run cli -- --help`.
