@@ -5,8 +5,11 @@ import {
   groupTracks,
   historyRecordsToTrackPositions,
   sampleTrackPositions,
+  sampleTrackSegmentsWithinBudget,
+  trackGeometryPointBudget,
   visibleTrackImeis,
   type TrackPosition,
+  type TrackSegment,
 } from "../src/dashboard/frontend/map-tracks";
 
 function point(
@@ -112,6 +115,139 @@ describe("map tracks", () => {
     expect(() => sampleTrackPositions(positions, 1)).toThrow(RangeError);
   });
 
+  it("selects adaptive global geometry budgets from the map zoom", () => {
+    expect(trackGeometryPointBudget("live", 10)).toBe(600);
+    expect(trackGeometryPointBudget("live", 11)).toBe(1_500);
+    expect(trackGeometryPointBudget("live", 13)).toBe(1_500);
+    expect(trackGeometryPointBudget("live", 14)).toBe(3_000);
+    expect(trackGeometryPointBudget("history", 10)).toBe(400);
+    expect(trackGeometryPointBudget("history", 11)).toBe(1_000);
+    expect(trackGeometryPointBudget("history", 13)).toBe(1_000);
+    expect(trackGeometryPointBudget("history", 14)).toBe(2_000);
+    expect(() => trackGeometryPointBudget("live", Number.NaN)).toThrow(RangeError);
+  });
+
+  it("samples all segments within one global budget and preserves every segment boundary", () => {
+    const segments = [
+      segment("111", "trip-a", 1, 0, 10),
+      segment("111", "trip-a", 2, 10, 10),
+      segment("222", "trip-b", 1, 20, 10),
+    ];
+
+    const sampled = sampleTrackSegmentsWithinBudget(segments, 10);
+
+    expect(sampled.pointCount).toBe(10);
+    expect(sampled.requestedBudget).toBe(10);
+    expect(sampled.effectiveBudget).toBe(10);
+    expect(sampled.segments.map((trackSegment) => [
+      trackSegment.positions[0]?.latitude,
+      trackSegment.positions.at(-1)?.latitude,
+    ])).toEqual([[0, 9], [10, 19], [20, 29]]);
+    expect(sampled.segments.flatMap((trackSegment) => trackSegment.positions).map(
+      (position) => position.latitude,
+    )).toEqual([...sampled.segments.flatMap((trackSegment) => trackSegment.positions).map(
+      (position) => position.latitude,
+    )].sort((left, right) => left - right));
+  });
+
+  it("keeps a selected history point in addition to segment and revision boundaries", () => {
+    const selected = { ...point("111", "trip-a", 2, 15), id: "selected" };
+    const first = segment("111", "trip-a", 1, 0, 10);
+    const secondPositions = Array.from({ length: 10 }, (_, offset) => (
+      offset === 5 ? selected : { ...point("111", "trip-a", 2, offset + 10), id: `p-${offset}` }
+    ));
+    const second: TrackSegment<typeof selected> = {
+      key: "111\u0000trip-a\u00002",
+      imei: "111",
+      tripId: "trip-a",
+      configRevision: 2,
+      positions: secondPositions,
+    };
+
+    const sampled = sampleTrackSegmentsWithinBudget(
+      [first, second],
+      5,
+      (position) => "id" in position && position.id === "selected",
+    );
+
+    expect(sampled.pointCount).toBe(5);
+    expect(sampled.segments[0]?.positions.at(0)).toBe(first.positions.at(0));
+    expect(sampled.segments[0]?.positions.at(-1)).toBe(first.positions.at(-1));
+    expect(sampled.segments[1]?.positions.at(0)).toBe(second.positions.at(0));
+    expect(sampled.segments[1]?.positions.at(-1)).toBe(second.positions.at(-1));
+    expect(sampled.segments[1]?.positions).toContain(selected);
+  });
+
+  it("keeps the repeated position that joins adjacent revision segments", () => {
+    const grouped = groupTracks([
+      point("111", "trip-a", 1, 0),
+      point("111", "trip-a", 1, 1),
+      point("111", "trip-a", 1, 2),
+      point("111", "trip-a", 2, 3),
+      point("111", "trip-a", 2, 4),
+      point("111", "trip-a", 2, 5),
+    ], "");
+
+    const sampled = sampleTrackSegmentsWithinBudget(grouped.segments, 4);
+
+    expect(sampled.pointCount).toBe(4);
+    expect(sampled.segments[0]?.positions.map((position) => position.latitude)).toEqual([0, 2]);
+    expect(sampled.segments[1]?.positions.map((position) => position.latitude)).toEqual([2, 5]);
+    expect(sampled.segments[0]?.positions.at(-1)).toBe(sampled.segments[1]?.positions[0]);
+  });
+
+  it("keeps samples of unchanged long segments stable when the last segment grows", () => {
+    const unchangedFirst = segment("111", "trip-a", 1, 0, 100);
+    const unchangedSecond = segment("222", "trip-b", 1, 1_000, 100);
+    const growing = segment("333", "trip-c", 1, 2_000, 100);
+    const before = sampleTrackSegmentsWithinBudget(
+      [unchangedFirst, unchangedSecond, growing],
+      30,
+    );
+    const appendedPosition = point("333", "trip-c", 1, 2_100);
+    const after = sampleTrackSegmentsWithinBudget([
+      unchangedFirst,
+      unchangedSecond,
+      { ...growing, positions: [...growing.positions, appendedPosition] },
+    ], 30);
+
+    expect(after.pointCount).toBe(before.pointCount);
+    expect(after.segments[0]?.positions).toEqual(before.segments[0]?.positions);
+    expect(after.segments[1]?.positions).toEqual(before.segments[1]?.positions);
+    for (let index = 0; index < before.segments[0]!.positions.length; index += 1) {
+      expect(after.segments[0]!.positions[index]).toBe(before.segments[0]!.positions[index]);
+    }
+    for (let index = 0; index < before.segments[1]!.positions.length; index += 1) {
+      expect(after.segments[1]!.positions[index]).toBe(before.segments[1]!.positions[index]);
+    }
+    expect(after.segments[2]?.positions.at(-1)).toBe(appendedPosition);
+  });
+
+  it("raises the effective budget when required endpoints exceed the requested budget", () => {
+    const segments = [
+      segment("111", "trip-a", 1, 0, 2),
+      segment("111", "trip-a", 2, 2, 2),
+      segment("111", "trip-a", 3, 4, 2),
+    ];
+
+    const sampled = sampleTrackSegmentsWithinBudget(segments, 2);
+
+    expect(sampled.pointCount).toBe(6);
+    expect(sampled.requestedBudget).toBe(2);
+    expect(sampled.effectiveBudget).toBe(6);
+    expect(sampled.segments).toBe(segments);
+  });
+
+  it("reuses complete segment references and validates the global budget", () => {
+    const complete = segment("111", "trip-a", 1, 0, 2);
+    const segments = [complete];
+    const sampled = sampleTrackSegmentsWithinBudget(segments, 10);
+
+    expect(sampled.segments[0]).toBe(complete);
+    expect(sampled.segments).toBe(segments);
+    expect(() => sampleTrackSegmentsWithinBudget([complete], 0)).toThrow(RangeError);
+  });
+
   it("maps stored history records onto one selectable trip without losing telemetry", () => {
     const telemetry = { groups: [{ key: "gps", label: "GPS", fields: [] }] };
     const records = [{
@@ -137,3 +273,21 @@ describe("map tracks", () => {
     })]);
   });
 });
+
+function segment(
+  imei: string,
+  tripId: string,
+  configRevision: number,
+  startLatitude: number,
+  length: number,
+): TrackSegment {
+  return {
+    key: `${imei}\u0000${tripId}\u0000${configRevision}`,
+    imei,
+    tripId,
+    configRevision,
+    positions: Array.from({ length }, (_, offset) => (
+      point(imei, tripId, configRevision, startLatitude + offset)
+    )),
+  };
+}

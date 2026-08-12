@@ -21,6 +21,21 @@ import { DatabaseService } from "./database.module";
 
 export const DASHBOARD_STORE = Symbol("DASHBOARD_STORE");
 
+export interface DashboardPositionRecord extends DashboardPosition {
+  id: string;
+}
+
+export interface DashboardPositionQuery {
+  imei?: string;
+  afterRecordId?: string;
+  limit: number;
+}
+
+export interface DashboardPositionPage {
+  positions: DashboardPositionRecord[];
+  hasMore: boolean;
+}
+
 export interface DashboardStore {
   listDevices(): Promise<DashboardDeviceRecord[]>;
   getDevice(imei: string): Promise<DashboardDeviceRecord | undefined>;
@@ -43,7 +58,7 @@ export interface DashboardStore {
   appendLog(event: DashboardLogEvent): Promise<DashboardLogEvent>;
   listLogs(query?: DashboardLogQuery): Promise<DashboardLogEvent[]>;
   hideLogs(imei?: string): Promise<void>;
-  listPositions(imei?: string, limit?: number): Promise<DashboardPosition[]>;
+  listPositions(query: DashboardPositionQuery): Promise<DashboardPositionPage>;
   archiveDashboardState(): Promise<void>;
   interruptActiveRuns(): Promise<number>;
 }
@@ -420,45 +435,66 @@ export class PostgresDashboardStore implements DashboardStore {
     );
   }
 
-  async listPositions(imei?: string, limit = 5_000): Promise<DashboardPosition[]> {
+  async listPositions(query: DashboardPositionQuery): Promise<DashboardPositionPage> {
+    const { imei, afterRecordId } = query;
+    const maximumLimit = afterRecordId === undefined ? 5_000 : 1_000;
+    const limit = Math.min(Math.max(query.limit, 1), maximumLimit);
     const values: unknown[] = [];
     const clauses = ["r.trip_id IS NOT NULL"];
     if (imei) {
       values.push(normalizeImei(imei));
       clauses.push(`f.imei = $${values.length}`);
     }
-    values.push(Math.min(Math.max(limit, 1), 5_000));
+    if (afterRecordId !== undefined) {
+      values.push(afterRecordId);
+      clauses.push(`r.id > $${values.length}::bigint`);
+    }
+    values.push(afterRecordId === undefined ? limit : limit + 1);
     const result = await this.database.query<{
+      id: string;
       imei: string; trip_id: string; config_revision: number | null; recorded_at: Date;
       latitude_e7: number; longitude_e7: number; altitude_m: number; heading_deg: number;
       speed_kph: number; satellites: number;
     }>(
-      `SELECT imei, trip_id, config_revision, recorded_at, latitude_e7, longitude_e7,
-              altitude_m, heading_deg, speed_kph, satellites
-       FROM (
-         SELECT f.imei, r.trip_id, NULL::integer AS config_revision,
-                r.timestamp AS recorded_at, r.latitude_e7, r.longitude_e7,
-                r.altitude_meters AS altitude_m, r.heading_degrees AS heading_deg,
-                r.speed_kph, r.satellites, r.id
-         FROM avl_records r JOIN avl_frames f ON f.id = r.frame_id
-         WHERE ${clauses.join(" AND ")}
-         ORDER BY r.id DESC LIMIT $${values.length}
-       ) recent
-       ORDER BY recorded_at, id`,
+      afterRecordId === undefined
+        ? `SELECT record_id::text AS id, imei, trip_id, config_revision, recorded_at,
+                  latitude_e7, longitude_e7, altitude_m, heading_deg, speed_kph, satellites
+           FROM (
+             SELECT r.id AS record_id, f.imei, r.trip_id, NULL::integer AS config_revision,
+                    r.timestamp AS recorded_at, r.latitude_e7, r.longitude_e7,
+                    r.altitude_meters AS altitude_m, r.heading_degrees AS heading_deg,
+                    r.speed_kph, r.satellites
+             FROM avl_records r JOIN avl_frames f ON f.id = r.frame_id
+             WHERE ${clauses.join(" AND ")}
+             ORDER BY r.id DESC LIMIT $${values.length}
+           ) recent
+           ORDER BY record_id ASC`
+        : `SELECT r.id::text AS id, f.imei, r.trip_id,
+                  NULL::integer AS config_revision, r.timestamp AS recorded_at,
+                  r.latitude_e7, r.longitude_e7, r.altitude_meters AS altitude_m,
+                  r.heading_degrees AS heading_deg, r.speed_kph, r.satellites
+           FROM avl_records r JOIN avl_frames f ON f.id = r.frame_id
+           WHERE ${clauses.join(" AND ")}
+           ORDER BY r.id ASC LIMIT $${values.length}`,
       values,
     );
-    return result.rows.map((row) => ({
-      imei: row.imei,
-      tripId: row.trip_id,
-      configRevision: row.config_revision ?? 1,
-      timestampMs: row.recorded_at.getTime(),
-      latitude: row.latitude_e7 / 10_000_000,
-      longitude: row.longitude_e7 / 10_000_000,
-      altitudeMeters: row.altitude_m,
-      headingDegrees: row.heading_deg,
-      speedKph: row.speed_kph,
-      satellites: row.satellites,
-    }));
+    const rows = afterRecordId === undefined ? result.rows : result.rows.slice(0, limit);
+    return {
+      hasMore: afterRecordId !== undefined && result.rows.length > limit,
+      positions: rows.map((row) => ({
+        id: row.id,
+        imei: row.imei,
+        tripId: row.trip_id,
+        configRevision: row.config_revision ?? 1,
+        timestampMs: row.recorded_at.getTime(),
+        latitude: row.latitude_e7 / 10_000_000,
+        longitude: row.longitude_e7 / 10_000_000,
+        altitudeMeters: row.altitude_m,
+        headingDegrees: row.heading_deg,
+        speedKph: row.speed_kph,
+        satellites: row.satellites,
+      })),
+    };
   }
 
   async archiveDashboardState(): Promise<void> {
