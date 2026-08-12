@@ -1,4 +1,4 @@
-import { Inject, Injectable } from "@nestjs/common";
+import { BadRequestException, Inject, Injectable } from "@nestjs/common";
 
 import {
   type DashboardDeviceRecord,
@@ -7,6 +7,11 @@ import {
   type DashboardRunStatus,
 } from "../domain";
 import { DASHBOARD_STORE, type DashboardStore } from "../persistence/dashboard-store";
+
+export interface PositionPageQueryInput {
+  afterRecordId?: string;
+  limit?: string;
+}
 
 export interface DashboardDeviceStatus {
   imei: string;
@@ -75,11 +80,14 @@ export class StatusService {
     };
   }
 
-  async listPositions(imei?: string) {
-    const positions = await this.store.listPositions(imei);
+  async listPositions(imei?: string, input: PositionPageQueryInput = {}) {
+    const query = parsePositionPageQuery(input);
+    const page = await this.store.listPositions({ imei, ...query });
     return {
-      positions,
-      configRevisions: await this.store.listConfigRevisionsForPositions(positions),
+      positions: page.positions,
+      configRevisions: await this.store.listConfigRevisionsForPositions(page.positions),
+      nextRecordId: page.positions.at(-1)?.id ?? query.afterRecordId ?? "0",
+      hasMore: page.hasMore,
     };
   }
 
@@ -114,4 +122,52 @@ export class StatusService {
 
 function isActiveStatus(status: DashboardRunStatus): boolean {
   return status === "starting" || status === "running" || status === "reconnecting";
+}
+
+function parsePositionPageQuery(input: PositionPageQueryInput): {
+  afterRecordId?: string;
+  limit: number;
+} {
+  const { afterRecordId } = input;
+  if (afterRecordId !== undefined && !isRecordId(afterRecordId)) {
+    throw new BadRequestException({
+      error: {
+        code: "INVALID_RECORD_ID",
+        message: "afterRecordId must be a non-negative integer.",
+      },
+    });
+  }
+
+  const maximumLimit = afterRecordId === undefined ? 5_000 : 1_000;
+  const limit = input.limit === undefined ? maximumLimit : parseLimit(input.limit, maximumLimit);
+  return { afterRecordId, limit };
+}
+
+function isRecordId(value: string): boolean {
+  if (!/^\d+$/.test(value)) return false;
+  try {
+    return BigInt(value) <= 9_223_372_036_854_775_807n;
+  } catch {
+    return false;
+  }
+}
+
+function parseLimit(value: string, maximum: number): number {
+  if (!/^[1-9]\d*$/.test(value)) {
+    throw invalidLimit(maximum);
+  }
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed) || parsed > maximum) {
+    throw invalidLimit(maximum);
+  }
+  return parsed;
+}
+
+function invalidLimit(maximum: number): BadRequestException {
+  return new BadRequestException({
+    error: {
+      code: "INVALID_LIMIT",
+      message: `Limit must be between 1 and ${maximum}.`,
+    },
+  });
 }

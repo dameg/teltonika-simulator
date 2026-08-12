@@ -7,6 +7,7 @@ import {
   Inject,
   NotFoundException,
   Param,
+  Query,
 } from "@nestjs/common";
 
 import { DashboardDomainError } from "../domain";
@@ -42,8 +43,11 @@ export class StatusController {
   }
 
   @Get("positions")
-  listPositions() {
-    return this.statusService.listPositions();
+  listPositions(
+    @Query("afterRecordId") afterRecordId?: string,
+    @Query("limit") limit?: string,
+  ) {
+    return this.statusService.listPositions(undefined, { afterRecordId, limit });
   }
 
   @Get("positions/:imei")

@@ -29,6 +29,15 @@ export interface GroupedTracks<TPosition extends TrackPosition = TrackPosition> 
   pointCount: number;
 }
 
+export type TrackGeometryVariant = "live" | "history";
+
+export interface SampledTrackGeometry<TPosition extends TrackPosition = TrackPosition> {
+  segments: readonly TrackSegment<TPosition>[];
+  pointCount: number;
+  requestedBudget: number;
+  effectiveBudget: number;
+}
+
 export interface HistoryRecordPositionSource {
   id: string;
   timestampMs: number;
@@ -41,6 +50,20 @@ export interface HistoryRecordPositionSource {
 }
 
 const GOLDEN_ANGLE_DEGREES = 137.507_764_05;
+
+const TRACK_GEOMETRY_BUDGETS: Record<TrackGeometryVariant, readonly [number, number, number]> = {
+  live: [600, 1_500, 3_000],
+  history: [400, 1_000, 2_000],
+};
+
+export function trackGeometryPointBudget(variant: TrackGeometryVariant, zoom: number): number {
+  if (!Number.isFinite(zoom)) throw new RangeError("map zoom must be finite");
+
+  const budgets = TRACK_GEOMETRY_BUDGETS[variant];
+  if (zoom <= 10) return budgets[0];
+  if (zoom <= 13) return budgets[1];
+  return budgets[2];
+}
 
 export function visibleTrackImeis(
   positions: readonly { imei: string }[],
@@ -126,6 +149,110 @@ export function sampleTrackPositions<TPosition>(
   }
   sampled.push(positions[positions.length - 1]!);
   return sampled;
+}
+
+export function sampleTrackSegmentsWithinBudget<TPosition extends TrackPosition>(
+  segments: readonly TrackSegment<TPosition>[],
+  maximum: number,
+  isRequired: (position: TPosition) => boolean = () => false,
+): SampledTrackGeometry<TPosition> {
+  if (!Number.isInteger(maximum) || maximum < 1) {
+    throw new RangeError("maximum track geometry points must be a positive integer");
+  }
+
+  const requiredIndexes = segments.map((segment) => {
+    const indexes = new Set<number>();
+    if (segment.positions.length > 0) {
+      indexes.add(0);
+      indexes.add(segment.positions.length - 1);
+    }
+    for (let index = 1; index < segment.positions.length - 1; index += 1) {
+      if (isRequired(segment.positions[index]!)) indexes.add(index);
+    }
+    return indexes;
+  });
+
+  const requiredCount = requiredIndexes.reduce((count, indexes) => count + indexes.size, 0);
+  const effectiveBudget = Math.max(maximum, requiredCount);
+  const optionalIndexesBySegment = segments.map((segment, segmentIndex) => (
+    segment.positions
+      .map((_, positionIndex) => positionIndex)
+      .filter((positionIndex) => !requiredIndexes[segmentIndex]!.has(positionIndex))
+  ));
+  const optionalCount = optionalIndexesBySegment.reduce(
+    (count, indexes) => count + indexes.length,
+    0,
+  );
+  const optionalSlots = Math.min(optionalCount, effectiveBudget - requiredCount);
+  const optionalSlotsBySegment = distributeSlotsByWaterFilling(
+    optionalIndexesBySegment.map((indexes) => indexes.length),
+    optionalSlots,
+  );
+
+  for (let segmentIndex = 0; segmentIndex < segments.length; segmentIndex += 1) {
+    const optionalIndexes = optionalIndexesBySegment[segmentIndex]!;
+    const chosenOptionalIndexes = evenlySpacedIndexes(
+      optionalIndexes.length,
+      optionalSlotsBySegment[segmentIndex]!,
+    );
+    for (const optionalIndex of chosenOptionalIndexes) {
+      requiredIndexes[segmentIndex]!.add(optionalIndexes[optionalIndex]!);
+    }
+  }
+
+  let pointCount = 0;
+  let changed = false;
+  const sampledSegments = segments.map((segment, segmentIndex) => {
+    const indexes = requiredIndexes[segmentIndex]!;
+    pointCount += indexes.size;
+    if (indexes.size === segment.positions.length) return segment;
+
+    changed = true;
+    return {
+      ...segment,
+      positions: [...indexes]
+        .sort((left, right) => left - right)
+        .map((index) => segment.positions[index]!),
+    };
+  });
+
+  return {
+    segments: changed ? sampledSegments : segments,
+    pointCount,
+    requestedBudget: maximum,
+    effectiveBudget,
+  };
+}
+
+function distributeSlotsByWaterFilling(capacities: readonly number[], maximum: number): number[] {
+  const allocations = capacities.map(() => 0);
+  let remaining = maximum;
+
+  while (remaining > 0) {
+    let allocatedThisRound = 0;
+    for (let index = 0; index < capacities.length && remaining > 0; index += 1) {
+      if (allocations[index]! >= capacities[index]!) continue;
+      allocations[index] += 1;
+      remaining -= 1;
+      allocatedThisRound += 1;
+    }
+    if (allocatedThisRound === 0) break;
+  }
+
+  return allocations;
+}
+
+function evenlySpacedIndexes(length: number, maximum: number): number[] {
+  if (maximum === 0) return [];
+  if (maximum >= length) return Array.from({ length }, (_, index) => index);
+  if (maximum === 1) return [Math.floor((length - 1) / 2)];
+
+  const indexes: number[] = [];
+  const step = (length - 1) / (maximum - 1);
+  for (let index = 0; index < maximum; index += 1) {
+    indexes.push(Math.round(index * step));
+  }
+  return indexes;
 }
 
 export function historyRecordsToTrackPositions<TRecord extends HistoryRecordPositionSource>(
