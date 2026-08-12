@@ -41,6 +41,12 @@ describe("dashboard app shell", () => {
     expect(shell).toContain('<div id="root">Loading dashboard shell...</div>');
     expect(shell).toContain('<script defer src="/dashboard-app.js"></script>');
     expect(shell).toContain('<link rel="stylesheet" href="/dashboard-app.css">');
+    expect(shell).toContain("teltonika-dashboard-color-scheme");
+    expect(shell).toContain("prefers-color-scheme: dark");
+    expect(shell).toContain("data-mantine-color-scheme");
+    expect(shell.indexOf("teltonika-dashboard-color-scheme")).toBeLessThan(
+      shell.indexOf('<link rel="stylesheet" href="/dashboard-app.css">'),
+    );
 
     const frontendResponse = await fetch(`${baseUrl}/dashboard-app.js`);
 
@@ -57,6 +63,7 @@ describe("dashboard app shell", () => {
     expect(frontendBundle).toContain("Start all");
     expect(frontendBundle).toContain("Recent logs");
     expect(frontendBundle).toContain("JSON package");
+    expect(frontendBundle).toContain("Live & devices");
     expect(frontendBundle).toContain("Live map");
     expect(frontendBundle).toContain("Trip history");
     expect(frontendBundle).toContain("Selected route");
@@ -70,6 +77,8 @@ describe("dashboard app shell", () => {
     expect(frontendBundle).toContain("Updates while this drawer is open");
     expect(frontendBundle).toContain("Clear logs");
     expect(frontendBundle).toContain("Clear dashboard state");
+    expect(frontendBundle).toContain("Switch to dark mode");
+    expect(frontendBundle).toContain("Switch to light mode");
     expect(frontendBundle).toContain("/api/status/devices");
     expect(frontendBundle).toContain("/api/status/overview");
     expect(frontendBundle).toContain("/api/logs?limit=100");

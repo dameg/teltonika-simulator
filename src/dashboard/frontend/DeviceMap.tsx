@@ -111,6 +111,8 @@ interface LegendRevision {
 
 const ROUTE_LABEL_MIN_ZOOM = 14;
 const MAX_HISTORY_POINT_MARKERS = 500;
+const HISTORY_POINT_RADIUS = 5;
+const SELECTED_HISTORY_POINT_RADIUS = 8;
 const DEFAULT_VIEW: L.LatLngTuple = [54.6872, 25.2797];
 
 export const DeviceMap = memo(function DeviceMap({
@@ -367,6 +369,11 @@ function reconcileTracks(
       layers.tracks.removeLayer(entry.color);
     },
   });
+
+  // Canvas paths share a renderer, so route updates must not cover selectable point markers.
+  layers.markers.eachLayer((layer) => {
+    if (layer instanceof L.Path) layer.bringToFront();
+  });
 }
 
 function reconcileLiveMarkers(
@@ -551,11 +558,11 @@ function liveMarkerStyle(device: MapDevice | undefined, selected: boolean): L.Ci
 
 function historyMarkerStyle(selected: boolean): L.CircleMarkerOptions {
   return {
-    radius: selected ? 7 : 3,
-    color: selected ? "#172033" : "#225ea8",
-    fillColor: selected ? "#f59f00" : "#ffffff",
-    fillOpacity: selected ? 1 : 0.8,
-    weight: selected ? 3 : 1.5,
+    radius: selected ? SELECTED_HISTORY_POINT_RADIUS : HISTORY_POINT_RADIUS,
+    color: selected ? "#102832" : "#087f8c",
+    fillColor: selected ? "#f28c28" : "#ffffff",
+    fillOpacity: 1,
+    weight: selected ? 3 : 2,
   };
 }
 

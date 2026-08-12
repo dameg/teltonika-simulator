@@ -45,6 +45,17 @@ export class AppService {
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Teltonika Device Control Dashboard</title>
+    <script>
+      (function () {
+        var system = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+        var scheme = system;
+        try {
+          var stored = localStorage.getItem("teltonika-dashboard-color-scheme");
+          if (stored === "light" || stored === "dark") scheme = stored;
+        } catch (_) {}
+        document.documentElement.setAttribute("data-mantine-color-scheme", scheme);
+      })();
+    </script>
     <link rel="stylesheet" href="/dashboard-app.css">
   </head>
   <body>

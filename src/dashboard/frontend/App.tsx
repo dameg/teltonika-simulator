@@ -16,15 +16,17 @@ import {
   SimpleGrid,
   Slider,
   Stack,
+  Tabs,
   Text,
   TextInput,
   Title,
   Tooltip,
   UnstyledButton
 } from "@mantine/core";
-import { Activity, Filter, Pencil, Play, Plus, RefreshCw, Square, Trash2 } from "lucide-react";
+import { Activity, Filter, History, Pencil, Play, Plus, RadioTower, RefreshCw, Square, Trash2 } from "lucide-react";
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState, type FormEvent, type ReactElement } from "react";
 
+import { ColorSchemeToggle } from "./ColorSchemeToggle";
 import { request } from "./dashboard-api";
 import { HistoryPanel, type HistoryDevice } from "./HistoryPanel";
 import { LiveMapPanel } from "./LiveMapPanel";
@@ -263,16 +265,20 @@ export function App(): ReactElement {
   return (
     <Box component="main" className="dashboard-shell">
       <Box className="dashboard-frame">
-        <header className="topbar">
+        <header className="topbar" data-active={runningCount > 0 || undefined}>
           <Group gap="sm">
             <Box className="brand-mark"><Activity size={18} strokeWidth={2.2} /></Box>
-            <Title order={1}>Teltonika Simulator</Title>
+            <Box className="brand-copy">
+              <Text className="brand-eyebrow">AVL protocol workbench</Text>
+              <Title order={1}>Teltonika Simulator</Title>
+            </Box>
           </Group>
-          <Group gap="xs">
+          <Group gap="xs" className="topbar-actions">
             <Tooltip label="Device protocol endpoint — not an HTTP page"><Badge variant="outline" color="gray">TCP :5027</Badge></Tooltip>
             <Badge variant="light" color={runningCount > 0 ? "teal" : "gray"}>{runningCount} active</Badge>
             <Text size="sm" c="dimmed">{overview.total} devices</Text>
             <Button leftSection={<Plus size={15} />} onClick={openCreateModal}>Add device</Button>
+            <ColorSchemeToggle />
             <Tooltip label="Refresh"><ActionIcon size="lg" variant="subtle" aria-label="Refresh" onClick={() => void refreshAll()}><RefreshCw size={16} /></ActionIcon></Tooltip>
             <Tooltip label="Clear devices, runtime history, and logs"><ActionIcon size="lg" variant="subtle" color="red" aria-label="Clear dashboard state" onClick={clearState}><Trash2 size={16} /></ActionIcon></Tooltip>
           </Group>
@@ -282,14 +288,35 @@ export function App(): ReactElement {
           {message && <Alert color="teal" variant="light" withCloseButton onClose={() => setMessage("")}>{message}</Alert>}
           {error && <Alert color="red" variant="light" withCloseButton onClose={() => setError("")}>{error}</Alert>}
 
-          <div className="workspace-grid">
-            <LiveMapPanel
-              devices={mapDevices}
-              selectedImei={selectedImei}
-              selectedDeviceLabel={selectedDevice?.label}
-              refreshRevision={liveRefreshRevision}
-              onError={setError}
-            />
+          <Tabs defaultValue="live" keepMounted={false} className="workspace-tabs">
+            <Tabs.List className="workspace-tab-list" aria-label="Dashboard sections">
+              <Tabs.Tab
+                value="live"
+                className="workspace-tab"
+                leftSection={<RadioTower size={16} />}
+                rightSection={<span className="workspace-tab-meta">{devices.length}</span>}
+              >
+                Live &amp; devices
+              </Tabs.Tab>
+              <Tabs.Tab
+                value="history"
+                className="workspace-tab"
+                leftSection={<History size={16} />}
+                rightSection={<span className="workspace-tab-meta">Archive</span>}
+              >
+                Trip history
+              </Tabs.Tab>
+            </Tabs.List>
+
+            <Tabs.Panel value="live" className="workspace-tab-panel">
+              <div className="workspace-grid">
+                <LiveMapPanel
+                  devices={mapDevices}
+                  selectedImei={selectedImei}
+                  selectedDeviceLabel={selectedDevice?.label}
+                  refreshRevision={liveRefreshRevision}
+                  onError={setError}
+                />
 
             <Paper withBorder className="surface device-panel">
               <Group justify="space-between" className="surface-heading">
@@ -327,9 +354,14 @@ export function App(): ReactElement {
                 </ScrollArea>
               )}
             </Paper>
-          </div>
 
-          <HistoryPanel devices={historyDevices} onError={setError} />
+              </div>
+            </Tabs.Panel>
+
+            <Tabs.Panel value="history" className="workspace-tab-panel">
+              <HistoryPanel devices={historyDevices} onError={setError} />
+            </Tabs.Panel>
+          </Tabs>
         </Stack>
       </Box>
 
