@@ -1,4 +1,5 @@
 import {
+  ActionIcon,
   Badge,
   Box,
   Button,
@@ -13,7 +14,7 @@ import {
   TextInput,
   Title,
 } from "@mantine/core";
-import { RefreshCw } from "lucide-react";
+import { RefreshCw, X } from "lucide-react";
 import { memo, useCallback, useMemo, useRef, useState, type ReactElement } from "react";
 
 import { request } from "./dashboard-api";
@@ -98,7 +99,7 @@ export const HistoryPanel = memo(function HistoryPanel({ devices, onError }: His
       if (routeRequest.current !== requestId) return;
       setRecords(result.records);
       setRouteTruncated(result.truncated);
-      setSelectedRecordId(result.records.at(-1)?.id ?? "");
+      setSelectedRecordId("");
     } catch (error) {
       if (routeRequest.current === requestId) {
         onError(error instanceof Error ? error.message : "Trip history refresh failed");
@@ -216,45 +217,21 @@ export const HistoryPanel = memo(function HistoryPanel({ devices, onError }: His
             <Text fw={650} size="sm">Selected route</Text>
             {selectedTrip ? <Badge variant="outline" color="gray">{selectedTrip.recordCount} points · {selectedTrip.status}</Badge> : null}
           </Group>
-          <DeviceMap
-            variant="history"
-            devices={mapDevices}
-            positions={positions}
-            configRevisions={emptyConfigRevisions}
-            selectedImei={imei}
-            selectedPositionId={selectedRecordId}
-            onSelectPosition={selectPosition}
-          />
+          <div className="history-map-stage">
+            <DeviceMap
+              variant="history"
+              devices={mapDevices}
+              positions={positions}
+              configRevisions={emptyConfigRevisions}
+              selectedImei={imei}
+              selectedPositionId={selectedRecordId}
+              onSelectPosition={selectPosition}
+            />
+            {selectedRecord ? (
+              <HistoryPointOverlay record={selectedRecord} onClose={() => setSelectedRecordId("")} />
+            ) : null}
+          </div>
         </div>
-
-        <aside className="history-telemetry-panel" aria-label="Selected historical point telemetry">
-          <Text fw={650} size="sm">Point telemetry</Text>
-          {selectedRecord ? (
-            <ScrollArea className="history-telemetry-scroll" offsetScrollbars>
-              <Stack gap="sm" mt="sm">
-                <Box>
-                  <Text size="xs" c="dimmed">Timestamp</Text>
-                  <Text size="sm" fw={600}>{new Date(selectedRecord.timestampMs).toLocaleString()}</Text>
-                  <Code mt={5}>{selectedRecord.id}</Code>
-                </Box>
-                <SimpleGrid cols={2} spacing="xs">
-                  <HistoryMetric label="Coordinates" value={`${selectedRecord.latitude.toFixed(6)}, ${selectedRecord.longitude.toFixed(6)}`} />
-                  <HistoryMetric label="Speed" value={`${selectedRecord.speedKph} km/h`} />
-                  <HistoryMetric label="Altitude" value={`${selectedRecord.altitudeMeters} m`} />
-                  <HistoryMetric label="Heading" value={`${selectedRecord.headingDegrees}°`} />
-                  <HistoryMetric label="Satellites" value={String(selectedRecord.satellites)} />
-                  <HistoryMetric label="Frame" value={selectedRecord.frameId} />
-                </SimpleGrid>
-                <TelemetrySummary telemetry={selectedRecord.telemetry} />
-              </Stack>
-            </ScrollArea>
-          ) : (
-            <Box className="empty-state history-empty-state">
-              <Text fw={600}>No point selected</Text>
-              <Text size="sm" c="dimmed">Load a trip, then select a point on the stored route.</Text>
-            </Box>
-          )}
-        </aside>
       </div>
     </Paper>
   );
@@ -289,6 +266,40 @@ function historyQuery(from: string, to: string, limit: number, cursor?: string):
 
 function validHistoryRange(from: string, to: string): boolean {
   return !from || !to || new Date(from).getTime() <= new Date(to).getTime();
+}
+
+function HistoryPointOverlay({ record, onClose }: { record: HistoryRecord; onClose: () => void }): ReactElement {
+  return (
+    <aside className="history-point-overlay" aria-label="Selected historical point telemetry" role="dialog">
+      <div className="history-point-overlay-header">
+        <Box>
+          <Text size="xs" c="dimmed">Selected point</Text>
+          <Text fw={650} size="sm">Point telemetry</Text>
+        </Box>
+        <ActionIcon variant="subtle" size="sm" aria-label="Close point details" onClick={onClose}>
+          <X size={16} />
+        </ActionIcon>
+      </div>
+      <ScrollArea className="history-telemetry-scroll" offsetScrollbars>
+        <Stack gap="sm" mt="sm">
+          <Box>
+            <Text size="xs" c="dimmed">Timestamp</Text>
+            <Text size="sm" fw={600}>{new Date(record.timestampMs).toLocaleString()}</Text>
+            <Code mt={5}>{record.id}</Code>
+          </Box>
+          <SimpleGrid cols={2} spacing="xs">
+            <HistoryMetric label="Coordinates" value={`${record.latitude.toFixed(6)}, ${record.longitude.toFixed(6)}`} />
+            <HistoryMetric label="Speed" value={`${record.speedKph} km/h`} />
+            <HistoryMetric label="Altitude" value={`${record.altitudeMeters} m`} />
+            <HistoryMetric label="Heading" value={`${record.headingDegrees}°`} />
+            <HistoryMetric label="Satellites" value={String(record.satellites)} />
+            <HistoryMetric label="Frame" value={record.frameId} />
+          </SimpleGrid>
+          <TelemetrySummary telemetry={record.telemetry} />
+        </Stack>
+      </ScrollArea>
+    </aside>
+  );
 }
 
 function HistoryMetric({ label, value }: { label: string; value: string }): ReactElement {

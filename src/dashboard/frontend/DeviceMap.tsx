@@ -114,6 +114,7 @@ const MAX_HISTORY_POINT_MARKERS = 500;
 const HISTORY_POINT_RADIUS = 5;
 const SELECTED_HISTORY_POINT_RADIUS = 8;
 const DEFAULT_VIEW: L.LatLngTuple = [54.6872, 25.2797];
+const HISTORY_FOCUS_X_RATIO = 0.25;
 
 export const DeviceMap = memo(function DeviceMap({
   devices,
@@ -253,6 +254,18 @@ export const DeviceMap = memo(function DeviceMap({
       () => { if (next) selectHistoryMarker(layers, historyMarkersRef.current, next, onSelectPositionRef); },
     );
     selectedHistoryKeyRef.current = nextKey;
+  }, [positions, selectedPositionId, variant]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (variant !== "history" || !map || !selectedPositionId) return;
+    const selected = positions.find((position) => position.id === selectedPositionId);
+    if (!selected) return;
+    const zoom = map.getZoom();
+    const mapSize = map.getSize();
+    const projectedTarget = map.project([selected.latitude, selected.longitude], zoom)
+      .add([mapSize.x * (0.5 - HISTORY_FOCUS_X_RATIO), 0]);
+    map.setView(map.unproject(projectedTarget, zoom), zoom, { animate: true });
   }, [positions, selectedPositionId, variant]);
 
   useEffect(() => {

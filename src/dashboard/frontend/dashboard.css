@@ -332,9 +332,8 @@ header[data-active] .brand-mark::after,
 .history-surface { overflow: visible; }
 .history-filters { align-items: end; margin-bottom: 14px; }
 .history-load-button { align-self: end; }
-.history-grid { display: grid; grid-template-columns: minmax(0, 1fr) 350px; gap: 12px; align-items: stretch; }
-.history-map-panel,
-.history-telemetry-panel {
+.history-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; align-items: stretch; }
+.history-map-panel {
   position: relative;
   min-width: 0;
   padding: 12px;
@@ -342,21 +341,36 @@ header[data-active] .brand-mark::after,
   border-radius: 5px;
   background: var(--surface-subtle);
 }
+.history-map-stage { position: relative; min-width: 0; }
 .map-canvas-history { height: 460px; min-height: 360px; }
-.history-telemetry-panel { overflow: hidden; }
-.history-telemetry-panel::before {
+.history-point-overlay {
+  position: absolute;
+  z-index: 1100;
+  top: 12px;
+  right: 12px;
+  bottom: 12px;
+  display: flex;
+  width: min(360px, calc(100% - 24px));
+  min-height: 0;
+  flex-direction: column;
+  padding: 12px;
+  overflow: hidden;
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  background: var(--surface);
+  box-shadow: 0 12px 30px rgb(16 40 50 / 20%);
+}
+.history-point-overlay::before {
   position: absolute;
   top: 0;
   bottom: 0;
   left: 0;
   width: 3px;
-  background: var(--line-strong);
+  background: var(--signal);
   content: "";
 }
-.history-telemetry-panel[data-active]::before,
-.history-telemetry-panel:has(.history-telemetry-scroll)::before { background: var(--signal); }
-.history-telemetry-scroll { height: 500px; }
-.history-empty-state { padding: 86px 18px; }
+.history-point-overlay-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.history-point-overlay .history-telemetry-scroll { height: auto; min-height: 0; flex: 1; }
 .history-metric { min-width: 0; padding: 8px; border: 1px solid var(--line); border-radius: 4px; background: var(--surface-raised); }
 
 .log-row { padding: 12px 4px; border-bottom: 1px solid var(--line); content-visibility: auto; contain-intrinsic-size: 92px; }
@@ -375,7 +389,7 @@ header[data-active] .brand-mark::after,
 [data-mantine-color-scheme="dark"] .surface,
 [data-mantine-color-scheme="dark"] .device-card,
 [data-mantine-color-scheme="dark"] .history-map-panel,
-[data-mantine-color-scheme="dark"] .history-telemetry-panel,
+[data-mantine-color-scheme="dark"] .history-point-overlay,
 [data-mantine-color-scheme="dark"] .history-metric,
 [data-mantine-color-scheme="dark"] .telemetry-group { color: var(--text); }
 
@@ -449,7 +463,7 @@ header[data-active] .brand-mark::after,
 
 @media (max-width: 380px) {
   .telemetry-group dl { grid-template-columns: 1fr; }
-  .history-telemetry-panel .mantine-SimpleGrid-root { grid-template-columns: 1fr; }
+  .history-point-overlay .mantine-SimpleGrid-root { grid-template-columns: 1fr; }
 }
 
 @media (prefers-reduced-motion: reduce) {
