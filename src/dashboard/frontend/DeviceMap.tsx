@@ -256,6 +256,14 @@ export const DeviceMap = memo(function DeviceMap({
   }, [positions, selectedPositionId, variant]);
 
   useEffect(() => {
+    const map = mapRef.current;
+    if (variant !== "history" || !map || !selectedPositionId) return;
+    const selected = positions.find((position) => position.id === selectedPositionId);
+    if (!selected) return;
+    map.setView([selected.latitude, selected.longitude], map.getZoom(), { animate: true });
+  }, [positions, selectedPositionId, variant]);
+
+  useEffect(() => {
     pendingGeometryRef.current = geometryModel(grouped, variant);
     if (interactionsRef.current.size > 0) return;
     if (geometryFrameRef.current !== undefined) cancelAnimationFrame(geometryFrameRef.current);
