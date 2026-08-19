@@ -38,16 +38,18 @@ type Device = { imei: string; label: string; config: DeviceConfig; configRevisio
 type DeviceStatus = Device & { status: Status; updatedAtMs: number; lastStartAtMs?: number; lastStopAtMs?: number; lastError?: string };
 type Overview = { total: number; counts: Record<Status, number> };
 
-const emptyConfig: DeviceConfig = { host: "127.0.0.1", port: 5027, intervalMs: 1000, simulationSpeed: 0, reconnectDelayMs: 3000, routeFile: "routes/krakow-berlin.route.json", drivingStyle: "normal", seed: 1, deviceProfile: "fmc650-fms", packetCount: 1_000 };
+const emptyConfig: DeviceConfig = { host: "127.0.0.1", port: 5027, intervalMs: 1000, simulationSpeed: 0, reconnectDelayMs: 3000, routeFile: "routes/rotterdam-genoa.route.json", drivingStyle: "normal", seed: 1, deviceProfile: "fmc650-fms", packetCount: 1_000 };
 const emptyForm = { imei: "", label: "FMC650 test device", config: { ...emptyConfig } };
 const activeStatuses = new Set<Status>(["starting", "running", "reconnecting"]);
 const SUMMARY_POLL_INTERVAL_MS = 2_000;
 const LOG_POLL_INTERVAL_MS = 2_000;
 const predefinedRoutes = [
-  ["", "Built-in fallback (Vilnius)"],
-  ["tests/fixtures/city-loop.route.json", "City loop (Vilnius)"],
-  ["routes/krakow-berlin.route.json", "Kraków → Berlin (605.6 km)"],
-  ["routes/munich-rome.route.json", "Monachium → Rzym (915.7 km)"]
+  ["", "Generated fallback (Vilnius)"],
+  ["routes/rotterdam-genoa.route.json", "Rotterdam → Genua (1208.5 km)"],
+  ["routes/rotterdam-warsaw.route.json", "Rotterdam → Warszawa (1232.9 km)"],
+  ["routes/gdansk-vienna.route.json", "Gdańsk → Wiedeń (895.2 km)"],
+  ["routes/barcelona-milan.route.json", "Barcelona → Mediolan (978.9 km)"],
+  ["routes/strasbourg-budapest.route.json", "Strasburg → Budapeszt (1012.1 km)"]
 ] as const;
 const generateImei = () => Array.from(crypto.getRandomValues(new Uint8Array(15)), (byte) => byte % 10).join("");
 

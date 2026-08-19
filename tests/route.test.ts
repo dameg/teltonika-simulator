@@ -38,33 +38,36 @@ describe("route loading", () => {
     expect(route.points.map((point) => point.latitude)).toEqual([54.6872, 54.688, 54.6891]);
   });
 
-  it("loads the reusable Krakow-Berlin road route", () => {
-    const route = loadRouteFromFile(join(__dirname, "..", "routes", "krakow-berlin.route.json"));
+  it.each([
+    ["rotterdam-genoa", 3_426, 1_200_000, 1_210_000],
+    ["rotterdam-warsaw", 2_485, 1_220_000, 1_235_000],
+    ["gdansk-vienna", 2_167, 890_000, 900_000],
+    ["barcelona-milan", 2_856, 970_000, 985_000],
+    ["strasbourg-budapest", 2_547, 1_000_000, 1_015_000]
+  ])("loads the reusable %s transit route", (routeId, pointCount, minimumDistanceMeters, maximumDistanceMeters) => {
+    const route = loadRouteFromFile(join(__dirname, "..", "routes", `${routeId}.route.json`));
     const oneWayDistanceMeters = buildRouteGeometry(route).segments.slice(0, -1).reduce((sum, segment) => sum + segment.distanceMeters, 0);
 
-    expect(route.points).toHaveLength(1_383);
-    expect(route.points[0]).toMatchObject({ latitude: 50.049649, longitude: 19.944352 });
-    expect(route.points.at(-1)).toMatchObject({ latitude: 52.520001, longitude: 13.404964 });
-    expect(oneWayDistanceMeters).toBeGreaterThan(600_000);
-    expect(oneWayDistanceMeters).toBeLessThan(610_000);
-  });
-
-  it("loads the reusable Munich-Rome road route", () => {
-    const route = loadRouteFromFile(join(__dirname, "..", "routes", "munich-rome.route.json"));
-    const oneWayDistanceMeters = buildRouteGeometry(route).segments.slice(0, -1).reduce((sum, segment) => sum + segment.distanceMeters, 0);
-
-    expect(route.points).toHaveLength(2_206);
-    expect(route.points[0]).toMatchObject({ latitude: 48.136651, longitude: 11.577253 });
-    expect(route.points.at(-1)).toMatchObject({ latitude: 41.902866, longitude: 12.496497 });
-    expect(oneWayDistanceMeters).toBeGreaterThan(910_000);
-    expect(oneWayDistanceMeters).toBeLessThan(920_000);
+    expect(route.metadata.id).toBe(routeId);
+    expect(route.points).toHaveLength(pointCount);
+    expect(oneWayDistanceMeters).toBeGreaterThan(minimumDistanceMeters);
+    expect(oneWayDistanceMeters).toBeLessThan(maximumDistanceMeters);
   });
 
   it("fails clearly for invalid JSON", () => {
     expect(() => loadRouteFromFile(join(fixturesDir, "invalid-json.route.json"))).toThrow(/Invalid route JSON/);
   });
 
-  it("uses the generated fallback route when no route file is supplied", () => {
+  it("uses a seeded generated fallback route when no route file is supplied", () => {
+    const fallback = resolveSimulationRoute(undefined, 42);
+
+    expect(fallback.metadata).toMatchObject({
+      id: "generated-telemetry-fallback",
+      name: "Generated telemetry fallback"
+    });
+    expect(fallback.points).toHaveLength(12);
+    expect(fallback).toEqual(resolveSimulationRoute(undefined, 42));
+    expect(fallback).not.toEqual(resolveSimulationRoute(undefined, 43));
     expect(resolveSimulationRoute(undefined)).toEqual(generatedTelemetryFallbackRoute);
   });
 
@@ -75,8 +78,8 @@ describe("route loading", () => {
     expect(resolveSimulationRoute(join(fixturesDir, "city-loop.route.json"))).not.toEqual(generatedTelemetryFallbackRoute);
   });
 
-  it("treats an empty route path as an invalid explicit route file", () => {
-    expect(() => resolveSimulationRoute("")).toThrow(/Unable to read route file/);
+  it("uses the generated fallback route for an empty route selection", () => {
+    expect(resolveSimulationRoute("")).toEqual(generatedTelemetryFallbackRoute);
   });
 
   it("fails clearly for empty routes, invalid coordinates, and malformed speed limits", () => {

@@ -100,7 +100,6 @@ export async function runLiveSession(options: LiveSessionOptions): Promise<LiveS
 
   const logger = options.logger ?? defaultLogger;
   const reconnectDelayMs = options.reconnectDelayMs ?? 5_000;
-  const route = resolveSimulationRoute(options.routeFile);
   const initialConfiguration = readCurrentConfiguration(options, {
     intervalMs: options.intervalMs,
     simulationSpeed: options.simulationSpeed,
@@ -109,6 +108,7 @@ export async function runLiveSession(options: LiveSessionOptions): Promise<LiveS
     deviceProfile: options.deviceProfile,
     packetCount: options.packetCount
   });
+  const route = resolveSimulationRoute(options.routeFile, initialConfiguration.seed);
   const profile = getDeviceProfile(initialConfiguration.deviceProfile);
   const simulator = createVehicleSimulator({
     route,

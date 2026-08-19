@@ -13,7 +13,7 @@ export interface DryRunOutput {
 }
 
 export function createDryRunOutput(config: SimulatorConfig): DryRunOutput {
-  const route = resolveSimulationRoute(config.routeFile);
+  const route = resolveSimulationRoute(config.routeFile, config.seed);
   const profile = getDeviceProfile(config.deviceProfile);
   const packetCount = config.packetCount ?? 1;
   const stdoutLines: string[] = [];

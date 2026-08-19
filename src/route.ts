@@ -3,18 +3,47 @@ import { readFileSync } from "node:fs";
 import type { InterpolatedRoutePosition, RouteDefinition, RouteGeometry, RouteMetadata, RoutePoint, RouteSegment } from "./domain";
 
 const earthRadiusMeters = 6_371_000;
-export const generatedTelemetryFallbackRoute: RouteDefinition = {
-  metadata: {
-    id: "generated-telemetry-fallback",
-    name: "Generated telemetry fallback",
-    description: "Default deterministic route used when no route file is configured"
-  },
-  points: [
-    { latitude: 54.6872, longitude: 25.2797, altitudeMeters: 120, speedLimitKph: 50 },
-    { latitude: 54.6878, longitude: 25.2811, altitudeMeters: 122, speedLimitKph: 40, stopDurationMs: 10_000 },
-    { latitude: 54.6889, longitude: 25.282, altitudeMeters: 119, speedLimitKph: 35 }
-  ]
-};
+const fallbackPointCount = 12;
+const fallbackCenter = { latitude: 54.6872, longitude: 25.2797 };
+
+function createSeededRandom(seed: number): () => number {
+  const normalizedSeed = Number.isFinite(seed) ? Math.trunc(seed) : 1;
+  let state = (normalizedSeed >>> 0) || 0x6d2b79f5;
+
+  return () => {
+    state = (Math.imul(state ^ (state >>> 15), state | 1) + 0x6d2b79f5) >>> 0;
+    let value = state;
+    value = Math.imul(value ^ (value >>> 7), value | 61);
+    return ((value ^ (value >>> 14)) >>> 0) / 4_294_967_296;
+  };
+}
+
+function createGeneratedTelemetryFallbackRoute(seed = 1): RouteDefinition {
+  const random = createSeededRandom(seed);
+  const centerLatitude = fallbackCenter.latitude + (random() - 0.5) * 0.01;
+  const centerLongitude = fallbackCenter.longitude + (random() - 0.5) * 0.01;
+  const longitudeScale = Math.cos((centerLatitude * Math.PI) / 180);
+
+  return {
+    metadata: {
+      id: "generated-telemetry-fallback",
+      name: "Generated telemetry fallback",
+      description: "Seeded random route around Vilnius used when no route file is configured"
+    },
+    points: Array.from({ length: fallbackPointCount }, (_, index) => {
+      const angle = (index / fallbackPointCount) * Math.PI * 2 + (random() - 0.5) * 0.25;
+      const radius = 0.004 + random() * 0.01;
+      return {
+        latitude: Number((centerLatitude + Math.cos(angle) * radius).toFixed(6)),
+        longitude: Number((centerLongitude + (Math.sin(angle) * radius) / longitudeScale).toFixed(6)),
+        speedLimitKph: 35 + Math.floor(random() * 26),
+        ...(index === 4 ? { stopDurationMs: 10_000 } : {})
+      };
+    })
+  };
+}
+
+export const generatedTelemetryFallbackRoute: RouteDefinition = createGeneratedTelemetryFallbackRoute();
 
 export function loadRouteFromFile(filePath: string): RouteDefinition {
   let raw: string;
@@ -34,8 +63,8 @@ export function loadRouteFromFile(filePath: string): RouteDefinition {
   return parseRouteDefinition(parsed);
 }
 
-export function resolveSimulationRoute(routeFile?: string): RouteDefinition {
-  return routeFile === undefined ? generatedTelemetryFallbackRoute : loadRouteFromFile(routeFile);
+export function resolveSimulationRoute(routeFile?: string, seed = 1): RouteDefinition {
+  return routeFile === undefined || routeFile === "" ? createGeneratedTelemetryFallbackRoute(seed) : loadRouteFromFile(routeFile);
 }
 
 export function parseRouteDefinition(value: unknown): RouteDefinition {
