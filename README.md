@@ -77,7 +77,7 @@ npm run cli -- \
   --host 127.0.0.1 \
   --port 5027 \
   --imei 356307042441013 \
-  --route-file routes/krakow-berlin.route.json \
+  --route-file routes/rotterdam-genoa.route.json \
   --device-profile fmc650-fms
 ```
 

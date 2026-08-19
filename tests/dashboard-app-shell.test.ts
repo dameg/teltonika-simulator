@@ -72,8 +72,11 @@ describe("dashboard app shell", () => {
     expect(frontendBundle).toContain("TCP :5027");
     expect(frontendBundle).toContain("Predefined route");
     expect(frontendBundle).toContain("Simulation speed");
-    expect(frontendBundle).toContain("routes/krakow-berlin.route.json");
-    expect(frontendBundle).toContain("routes/munich-rome.route.json");
+    expect(frontendBundle).toContain("routes/rotterdam-genoa.route.json");
+    expect(frontendBundle).toContain("routes/rotterdam-warsaw.route.json");
+    expect(frontendBundle).toContain("routes/gdansk-vienna.route.json");
+    expect(frontendBundle).toContain("routes/barcelona-milan.route.json");
+    expect(frontendBundle).toContain("routes/strasbourg-budapest.route.json");
     expect(frontendBundle).toContain("Updates while this drawer is open");
     expect(frontendBundle).toContain("Clear logs");
     expect(frontendBundle).toContain("Clear dashboard state");
