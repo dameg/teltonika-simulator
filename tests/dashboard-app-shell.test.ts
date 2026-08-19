@@ -60,7 +60,8 @@ describe("dashboard app shell", () => {
     expect(frontendBundle).toContain("fmc150");
     expect(frontendBundle).toContain("fmc250");
     expect(frontendBundle).toContain("Generate IMEI");
-    expect(frontendBundle).toContain("Start all");
+    expect(frontendBundle).toContain("Run all");
+    expect(frontendBundle).toContain("topbar-add-device");
     expect(frontendBundle).toContain("Recent logs");
     expect(frontendBundle).toContain("JSON package");
     expect(frontendBundle).toContain("Live & devices");

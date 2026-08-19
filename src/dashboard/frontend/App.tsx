@@ -279,7 +279,7 @@ export function App(): ReactElement {
             <Tooltip label="Device protocol endpoint — not an HTTP page"><Badge variant="outline" color="gray">TCP :5027</Badge></Tooltip>
             <Badge variant="light" color={runningCount > 0 ? "teal" : "gray"}>{runningCount} active</Badge>
             <Text size="sm" c="dimmed">{overview.total} devices</Text>
-            <Button leftSection={<Plus size={15} />} onClick={openCreateModal}>Add device</Button>
+            <Button className="topbar-add-device" size="sm" variant="light" color="teal" leftSection={<Plus size={15} />} onClick={openCreateModal}>Add device</Button>
             <ColorSchemeToggle />
             <Tooltip label="Refresh"><ActionIcon size="lg" variant="subtle" aria-label="Refresh" onClick={() => void refreshAll()}><RefreshCw size={16} /></ActionIcon></Tooltip>
             <Tooltip label="Clear devices, runtime history, and logs"><ActionIcon size="lg" variant="subtle" color="red" aria-label="Clear dashboard state" onClick={clearState}><Trash2 size={16} /></ActionIcon></Tooltip>
@@ -326,7 +326,7 @@ export function App(): ReactElement {
                 <Badge variant="light" color="gray">{devices.length}</Badge>
               </Group>
               <Group gap="xs" grow mb="md">
-                <Button size="xs" variant="default" leftSection={<Play size={13} />} onClick={() => void runAction("start-all", () => request("/api/runtime/start-all", { method: "POST" }))}>Start all</Button>
+                <Button size="xs" variant="default" leftSection={<Play size={13} />} onClick={() => void runAction("start-all", () => request("/api/runtime/start-all", { method: "POST" }))}>Run all</Button>
                 <Button size="xs" variant="light" color="red" leftSection={<Square size={12} />} onClick={() => void runAction("stop-all", () => request("/api/runtime/stop-all", { method: "POST" }))}>Stop all</Button>
               </Group>
 
