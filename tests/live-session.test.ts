@@ -2,6 +2,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { runLiveSession } from "../src/live-session";
+import { generatedTelemetryFallbackRoute } from "../src/route";
 import type {
   LiveSessionConfiguration,
   LiveSessionRecordAcceptedContext
@@ -45,6 +46,35 @@ describe("live session runtime", () => {
     const second = await collectPacketHexSequence();
 
     expect(first).toEqual(second);
+  });
+
+  it("accepts an in-memory route and rejects ambiguous route configuration", async () => {
+    const fixture = await useFixture();
+
+    await expect(runLiveSession({
+      host: fixture.host,
+      port: fixture.port,
+      imei: "123456789012345",
+      intervalMs: 5,
+      route: generatedTelemetryFallbackRoute,
+      drivingStyle: "normal",
+      seed: 7,
+      deviceProfile: "default-codec8e",
+      packetCount: 1,
+    })).resolves.toEqual({ kind: "completed" });
+
+    await expect(runLiveSession({
+      host: fixture.host,
+      port: fixture.port,
+      imei: "123456789012345",
+      intervalMs: 5,
+      route: generatedTelemetryFallbackRoute,
+      routeFile,
+      drivingStyle: "normal",
+      seed: 7,
+      deviceProfile: "default-codec8e",
+      packetCount: 1,
+    })).rejects.toThrow("either route or routeFile");
   });
 
   it("resumes at the next acknowledged record and preserves the accepted count", async () => {

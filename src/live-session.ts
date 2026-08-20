@@ -10,7 +10,7 @@ import {
   type VehicleSimulator,
   type VehicleSimulatorCheckpoint
 } from "./simulation";
-import type { AvlRecord, DrivingStyleName } from "./domain";
+import type { AvlRecord, DrivingStyleName, RouteDefinition } from "./domain";
 
 export interface LiveSessionLogger {
   info(message: string): void | Promise<void>;
@@ -24,6 +24,7 @@ export interface LiveSessionOptions {
   intervalMs: number;
   simulationSpeed?: number;
   reconnectDelayMs?: number;
+  route?: RouteDefinition;
   routeFile?: string;
   drivingStyle: DrivingStyleName;
   seed: number;
@@ -39,6 +40,7 @@ export interface LiveSessionOptions {
     packetHex: string,
     context: LiveSessionRecordAcceptedContext
   ) => void | Promise<void>;
+  onEvent?: (event: LiveSessionEvent) => void | Promise<void>;
 }
 
 export interface LiveSessionConfiguration {
@@ -57,6 +59,22 @@ export interface LiveSessionRecordAcceptedContext {
   configuration: Readonly<LiveSessionConfiguration>;
 }
 
+export type LiveSessionEvent =
+  | { kind: "connecting"; host: string; port: number; imei: string }
+  | { kind: "tcpConnected"; host: string; port: number; imei: string }
+  | { kind: "imeiSent"; imei: string }
+  | { kind: "imeiAccepted"; imei: string }
+  | { kind: "imeiRejected"; imei: string }
+  | { kind: "reconnecting"; delayMs: number; reason: string; imei: string }
+  | {
+      kind: "recordAccepted";
+      record: AvlRecord;
+      packetHex: string;
+      context: LiveSessionRecordAcceptedContext;
+    }
+  | { kind: "completed"; imei: string }
+  | { kind: "stopped"; imei: string };
+
 export type LiveSessionResult =
   | { kind: "completed" }
   | { kind: "rejected" };
@@ -64,7 +82,7 @@ export type LiveSessionResult =
 type ConnectionAttemptResult =
   | { kind: "completed" }
   | { kind: "rejected" }
-  | { kind: "reconnect" };
+  | { kind: "reconnect"; reason: string };
 
 interface PendingRecord {
   record: AvlRecord;
@@ -108,7 +126,10 @@ export async function runLiveSession(options: LiveSessionOptions): Promise<LiveS
     deviceProfile: options.deviceProfile,
     packetCount: options.packetCount
   });
-  const route = resolveSimulationRoute(options.routeFile, initialConfiguration.seed);
+  if (options.route !== undefined && options.routeFile !== undefined) {
+    throw new Error("Provide either route or routeFile, not both");
+  }
+  const route = options.route ?? resolveSimulationRoute(options.routeFile, initialConfiguration.seed);
   const profile = getDeviceProfile(initialConfiguration.deviceProfile);
   const simulator = createVehicleSimulator({
     route,
@@ -130,12 +151,19 @@ export async function runLiveSession(options: LiveSessionOptions): Promise<LiveS
   };
 
   if (hasReachedPacketLimit(sessionState)) {
+    await options.onEvent?.({ kind: "completed", imei: options.imei });
     return { kind: "completed" };
   }
 
   while (true) {
     throwIfAborted(options.signal);
 
+    await options.onEvent?.({
+      kind: "connecting",
+      host: options.host,
+      port: options.port,
+      imei: options.imei
+    });
     await logger.info(`connect host=${options.host} port=${options.port} imei=${options.imei}`);
 
     try {
@@ -144,11 +172,25 @@ export async function runLiveSession(options: LiveSessionOptions): Promise<LiveS
         sessionState,
       );
       if (result.kind === "reconnect") {
+        await options.onEvent?.({
+          kind: "reconnecting",
+          delayMs: reconnectDelayMs,
+          reason: result.reason,
+          imei: options.imei
+        });
         await logger.info(
           `reconnect delay-ms=${reconnectDelayMs} host=${options.host} port=${options.port} imei=${options.imei}`
         );
         await delayWithAbort(reconnectDelayMs, options.signal);
         continue;
+      }
+
+      if (result.kind === "completed") {
+        if (options.signal?.aborted) {
+          await options.onEvent?.({ kind: "stopped", imei: options.imei });
+        } else {
+          await options.onEvent?.({ kind: "completed", imei: options.imei });
+        }
       }
 
       return result;
@@ -180,13 +222,26 @@ async function runConnectionAttempt(
       imei: options.imei,
       signal: options.signal,
       onConnected: () =>
-        options.logger.info(
-          `tcp connected host=${options.host} port=${options.port} imei=${options.imei}`
-        ),
-      onImeiSent: () => options.logger.info(`imei sent imei=${options.imei}`),
+        Promise.all([
+          options.logger.info(
+            `tcp connected host=${options.host} port=${options.port} imei=${options.imei}`
+          ),
+          options.onEvent?.({
+            kind: "tcpConnected",
+            host: options.host,
+            port: options.port,
+            imei: options.imei
+          })
+        ]).then(() => undefined),
+      onImeiSent: () =>
+        Promise.all([
+          options.logger.info(`imei sent imei=${options.imei}`),
+          options.onEvent?.({ kind: "imeiSent", imei: options.imei })
+        ]).then(() => undefined),
     });
 
     if (handshake.kind === "rejected") {
+      await options.onEvent?.({ kind: "imeiRejected", imei: options.imei });
       await options.logger.info(`imei rejected imei=${options.imei}`);
       return { kind: "rejected" };
     }
@@ -197,6 +252,7 @@ async function runConnectionAttempt(
     });
 
     await options.logger.info(`imei accepted imei=${options.imei}`);
+    await options.onEvent?.({ kind: "imeiAccepted", imei: options.imei });
 
     while (true) {
       throwIfAborted(options.signal);
@@ -222,10 +278,17 @@ async function runConnectionAttempt(
       const result = await sendAvlPacket(handshake.socket, [pendingRecord.record]);
       sessionState.acceptedRecordCount += result.acceptedRecordCount;
       sessionState.pendingRecord = null;
-      await options.onRecordAccepted?.(pendingRecord.record, result.packetHex, {
+      const acceptedContext = {
         checkpoint: pendingRecord.checkpoint,
         acceptedRecordCount: sessionState.acceptedRecordCount,
         configuration: { ...pendingRecord.configuration }
+      } satisfies LiveSessionRecordAcceptedContext;
+      await options.onRecordAccepted?.(pendingRecord.record, result.packetHex, acceptedContext);
+      await options.onEvent?.({
+        kind: "recordAccepted",
+        record: pendingRecord.record,
+        packetHex: result.packetHex,
+        context: acceptedContext
       });
       await options.logger.info(
         `avl sent imei=${options.imei} records=1 timestamp=${pendingRecord.record.timestampMs} ack=${result.acceptedRecordCount}`
@@ -246,7 +309,7 @@ async function runConnectionAttempt(
       await options.logger.info(
         `connection lost imei=${options.imei} reason=${formatError(error)}`
       );
-      return { kind: "reconnect" };
+      return { kind: "reconnect", reason: formatError(error) };
     }
 
     throw error;
