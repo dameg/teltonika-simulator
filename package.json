@@ -1,10 +1,45 @@
 {
-  "name": "teltonika-simulator",
+  "name": "@company/teltonika-simulator",
   "version": "0.1.0",
-  "private": true,
+  "private": false,
+  "description": "Teltonika GPS device simulator and integration-test library",
+  "packageManager": "pnpm@11.0.4",
+  "engines": {
+    "node": ">=20"
+  },
+  "main": "./dist/package/index.cjs",
+  "types": "./dist/package/types/library/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/package/types/library/index.d.ts",
+      "import": "./dist/package/index.js",
+      "require": "./dist/package/index.cjs",
+      "default": "./dist/package/index.js"
+    },
+    "./core": {
+      "types": "./dist/package/types/library/core.d.ts",
+      "import": "./dist/package/core.js",
+      "require": "./dist/package/core.cjs",
+      "default": "./dist/package/core.js"
+    }
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/company/teltonika-simulator.git"
+  },
+  "publishConfig": {
+    "access": "restricted",
+    "registry": "https://npm.pkg.github.com",
+    "directory": "dist/package"
+  },
   "scripts": {
-    "build": "tsc -p tsconfig.json && npm run build:frontend",
-    "build:frontend": "esbuild src/dashboard/frontend/main.tsx --bundle --minify --platform=browser --format=iife --loader:.png=dataurl --outfile=dist/dashboard/frontend/dashboard-app.js",
+    "build": "pnpm run build:app && pnpm run build:library",
+    "build:app": "tsc -p tsconfig.json && pnpm run build:frontend",
+    "build:frontend": "node scripts/build-frontend.mjs",
+    "build:library": "node scripts/build-library.mjs",
+    "verify:package": "node scripts/verify-package.mjs",
+    "prepack": "pnpm run build:library",
+    "publish:package": "pnpm publish --no-git-checks",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
     "test:integration": "vitest run --config vitest.integration.config.ts",
@@ -17,7 +52,7 @@
     "cli": "node dist/src/cli.js",
     "dashboard": "node dist/src/dashboard/main.js",
     "dev": "tsx watch src/dashboard/dev.ts",
-    "dev:db": "set -a; [ -f .env ] && . ./.env; set +a; : \"${POSTGRES_DB:=teltonika}\"; : \"${POSTGRES_USER:=teltonika}\"; : \"${POSTGRES_PASSWORD:=teltonika-local}\"; : \"${POSTGRES_PORT:=5432}\"; export POSTGRES_DB POSTGRES_USER POSTGRES_PASSWORD POSTGRES_PORT; export DATABASE_URL=\"${DATABASE_URL:-postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@127.0.0.1:${POSTGRES_PORT}/${POSTGRES_DB}}\"; npm run db:up && npm run db:migrate && npm run dev"
+    "dev:db": "set -a; [ -f .env ] && . ./.env; set +a; : \"${POSTGRES_DB:=teltonika}\"; : \"${POSTGRES_USER:=teltonika}\"; : \"${POSTGRES_PASSWORD:=teltonika-local}\"; : \"${POSTGRES_PORT:=5432}\"; export POSTGRES_DB POSTGRES_USER POSTGRES_PASSWORD POSTGRES_PORT; export DATABASE_URL=\"${DATABASE_URL:-postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@127.0.0.1:${POSTGRES_PORT}/${POSTGRES_DB}}\"; pnpm run db:up && pnpm run db:migrate && pnpm run dev"
   },
   "dependencies": {
     "@mantine/core": "^9.4.1",

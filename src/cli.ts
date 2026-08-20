@@ -1,4 +1,4 @@
-import { runCli } from "./index";
+import { runCli } from "./cli-runner";
 
 if (require.main === module) {
   void runCli().then(

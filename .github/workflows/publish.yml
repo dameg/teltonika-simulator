@@ -1,20 +1,18 @@
-name: CI
+name: Publish package
 
 on:
-  pull_request:
-    branches: [main]
-
-  push:
-    branches: [main]
+  release:
+    types: [published]
 
 permissions:
   contents: read
+  packages: write
 
 jobs:
-  test:
-    name: Test and build
+  publish:
+    name: Publish npm package
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     services:
       postgres:
         image: postgres:17-alpine
@@ -36,6 +34,13 @@ jobs:
 
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.release.tag_name }}
+
+      - name: Verify release tag
+        shell: bash
+        run: |
+          test "${GITHUB_REF_NAME}" = "v$(node -p "require('./package.json').version")"
 
       - uses: pnpm/action-setup@v4
         with:
@@ -45,11 +50,16 @@ jobs:
         with:
           node-version: 24
           cache: pnpm
+          registry-url: https://npm.pkg.github.com
+          scope: "@company"
 
       - run: pnpm install --frozen-lockfile
       - run: pnpm run db:migrate
       - run: pnpm run typecheck
       - run: pnpm test
       - run: pnpm run test:integration
-      - run: pnpm run build
+      - run: pnpm run build:library
       - run: pnpm run verify:package
+      - run: pnpm publish --no-git-checks
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
