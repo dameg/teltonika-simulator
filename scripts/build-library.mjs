@@ -44,6 +44,7 @@ const packageManifest = {
   version: rootPackage.version,
   description: "Teltonika GPS device simulator for Node.js integration tests",
   type: "module",
+  sideEffects: false,
   main: "./index.cjs",
   types: "./types/library/index.d.ts",
   exports: {

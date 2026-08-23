@@ -151,6 +151,38 @@ await device.stop();
 `start()` kończy się po zaakceptowaniu IMEI. `device.done` zwraca wynik całej
 sesji, a `getSnapshot()` i `resumeFrom` umożliwiają wznowienie trasy.
 
+### Deterministyczne zakłócenia transmisji
+
+Tylko API biblioteki `Device` pozwala opcjonalnie zasymulować opóźnienia,
+jednorazowe rozłączenie, jednorazowo uszkodzony CRC i zakłócenie GNSS. Brak
+`noise` zachowuje zwykłe działanie. `ackTimeoutMs` ma domyślnie 30 000 ms i
+ogranicza oczekiwanie na potwierdzenie AVL.
+
+```ts
+const device = new Device({
+  imei: "356307042441013",
+  host: "127.0.0.1",
+  port: 5027,
+  route: presets.routes.rotterdamWarsaw,
+  ackTimeoutMs: 1_000,
+  noise: {
+    seed: "integration-test-42",
+    latency: { minMs: 10, maxMs: 30 },
+    connectionDrop: { probability: 0.1 },
+    packetCorruption: { probability: 0.05 },
+    gpsJamming: { probability: 0.1, severity: "critical", minDurationPackets: 1, maxDurationPackets: 3 },
+  },
+});
+
+device.on("noiseInjected", (event) => console.log(event.kind, event.recordTimestampMs));
+```
+
+Zakłócenia są deterministyczne dla tych samych opcji. Stan generatora zakłóceń
+nie jest zapisywany w `DeviceSnapshot`, więc wznowienie w nowo utworzonym
+`Device` odtwarza trasę, ale nie musi odtworzyć tej samej sekwencji zakłóceń.
+Aktywne zakłócenie GNSS używa AVL ID 318: `1` dla ostrzeżenia, `2` dla stanu
+krytycznego i `0` na pierwszym rekordzie po odzyskaniu sygnału.
+
 Zaawansowane moduły symulacji, tras, profili, Codec 8 Extended i transportu są
 dostępne z subpathu `@company/teltonika-simulator/core`. Dashboard, NestJS,
 React i PostgreSQL nie są częścią publikowanego artefaktu.

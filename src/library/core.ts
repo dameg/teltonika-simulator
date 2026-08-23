@@ -14,7 +14,11 @@ export { crc16Ibm, crc16IbmProtocolField } from "../codec-crc";
 export { encodeCodec8ExtendedPacket, encodeCodec8ExtendedRecord } from "../codec8-extended";
 export { decodeCodec8ExtendedPacket } from "../codec8-extended-decoder";
 export { encodeImeiHandshakeFrame, performImeiHandshake } from "../imei-handshake";
-export { sendAvlPacket } from "../avl-session";
+export { AvlAcknowledgementTimeoutError, sendAvlPacket } from "../avl-session";
+export {
+  createTransmissionNoiseController,
+  normalizeTransmissionNoiseOptions,
+} from "../transmission-noise";
 export {
   buildRouteGeometry,
   generatedTelemetryFallbackRoute,
@@ -65,6 +69,23 @@ export type {
   ImeiHandshakeResult,
 } from "../imei-handshake";
 export type { AvlPacketSendResult } from "../avl-session";
+export type { AvlPacketSendOptions } from "../avl-session";
+export type {
+  NormalizedTransmissionNoiseOptions,
+  PreparedNoiseRecord,
+  PreparedTransmissionNoiseEvent,
+  TransmissionNoiseController,
+  TransmissionNoiseEvent,
+  TransmissionNoiseEventData,
+  TransmissionNoiseGpsJammingEventData,
+  TransmissionNoiseGpsJammingOptions,
+  TransmissionNoiseKind,
+  TransmissionNoiseLatencyEventData,
+  TransmissionNoiseLatencyOptions,
+  TransmissionNoiseOptions,
+  TransmissionNoiseProbabilityEventData,
+  TransmissionNoiseProbabilityOptions,
+} from "../transmission-noise";
 export type {
   Codec8ExtendedDecodeError,
   Codec8ExtendedDecodeErrorKind,

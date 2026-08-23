@@ -1,5 +1,6 @@
 import { EventEmitter, once } from "node:events";
 import net from "node:net";
+import { crc16Ibm } from "../../src/codec-crc";
 
 export interface RecordedImeiFrame {
   rawFrame: Buffer;
@@ -26,6 +27,7 @@ export interface TeltonikaParserFixture {
   readonly port: number;
   readonly imeiFrames: readonly RecordedImeiFrame[];
   readonly avlFrames: readonly Buffer[];
+  readonly invalidAvlFrames: readonly Buffer[];
   readonly avlFrameRecords: readonly RecordedAvlFrame[];
   readonly clientSockets: readonly net.Socket[];
   setImeiResponseByte(responseByte: number): void;
@@ -48,6 +50,7 @@ export async function startTeltonikaParserFixture(
   const clientSockets: net.Socket[] = [];
   const imeiFrames: RecordedImeiFrame[] = [];
   const avlFrames: Buffer[] = [];
+  const invalidAvlFrames: Buffer[] = [];
   const avlFrameRecords: RecordedAvlFrame[] = [];
   const socketBuffers = new Map<net.Socket, Buffer>();
   const socketConnectionIds = new Map<net.Socket, number>();
@@ -112,6 +115,7 @@ export async function startTeltonikaParserFixture(
     port: address.port,
     imeiFrames,
     avlFrames,
+    invalidAvlFrames,
     avlFrameRecords,
     clientSockets,
     setImeiResponseByte(responseByte) {
@@ -229,7 +233,14 @@ export async function startTeltonikaParserFixture(
         connectionId,
         imei: socketImeis.get(socket) ?? null
       });
-      void writeChunks(socket, avlAckBuffer(avlAcknowledgementCount), avlAcknowledgementChunkSizes);
+      const dataField = rawFrame.subarray(8, 8 + dataLength);
+      const crc = rawFrame.readUInt32BE(8 + dataLength);
+      if (crc === crc16Ibm(dataField)) {
+        void writeChunks(socket, avlAckBuffer(avlAcknowledgementCount), avlAcknowledgementChunkSizes);
+      } else {
+        invalidAvlFrames.push(rawFrame);
+        events.emit("invalidAvlFrame", rawFrame);
+      }
       events.emit("avlFrame", rawFrame);
       offset += frameLength;
     }

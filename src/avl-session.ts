@@ -8,20 +8,37 @@ export interface AvlPacketSendResult {
   packetHex: string;
 }
 
+export interface AvlPacketSendOptions {
+  ackTimeoutMs?: number;
+  corruptCrc?: boolean;
+  signal?: AbortSignal;
+}
+
+export class AvlAcknowledgementTimeoutError extends Error {
+  constructor(timeoutMs: number) {
+    super(`Timed out waiting ${timeoutMs}ms for AVL acknowledgement.`);
+    this.name = "AvlAcknowledgementTimeoutError";
+  }
+}
+
 export async function sendAvlPacket(
   socket: net.Socket,
   records: readonly AvlRecord[],
+  options: AvlPacketSendOptions = {},
 ): Promise<AvlPacketSendResult> {
   const expectedRecordCount = records.length;
   const packet = encodeCodec8ExtendedPacket(records);
+  const sentPacket = options.corruptCrc ? corruptCrc(packet) : packet;
 
-  await writePacket(socket, packet);
+  await writePacket(socket, sentPacket);
 
   try {
     const acknowledgement = await readAcknowledgement(
       socket,
       4,
       "Socket closed before AVL acknowledgement was received.",
+      options.ackTimeoutMs,
+      options.signal,
     );
     const acceptedRecordCount = acknowledgement.readUInt32BE(0);
 
@@ -32,7 +49,7 @@ export async function sendAvlPacket(
       );
     }
 
-    return { acceptedRecordCount, packetHex: packet.toString("hex") };
+    return { acceptedRecordCount, packetHex: sentPacket.toString("hex") };
   } catch (error) {
     if (!socket.destroyed) {
       socket.destroy();
@@ -78,23 +95,35 @@ async function readAcknowledgement(
   socket: net.Socket,
   size: number,
   closeMessage: string,
+  timeoutMs: number | undefined,
+  signal: AbortSignal | undefined,
 ): Promise<Buffer> {
   if (socket.destroyed) {
     throw new Error(closeMessage);
   }
+  if (signal?.aborted) {
+    throw createAbortError();
+  }
 
   return new Promise<Buffer>((resolve, reject) => {
-    let buffer = Buffer.alloc(0);
+    const buffer = Buffer.alloc(size);
+    let received = 0;
+    const timer = timeoutMs === undefined ? undefined : setTimeout(() => {
+      cleanup();
+      reject(new AvlAcknowledgementTimeoutError(timeoutMs));
+    }, timeoutMs);
 
     const onData = (chunk: Buffer) => {
-      buffer = Buffer.concat([buffer, chunk]);
-      if (buffer.length < size) {
+      const copied = Math.min(size - received, chunk.byteLength);
+      chunk.copy(buffer, received, 0, copied);
+      received += copied;
+      if (received < size) {
         return;
       }
 
       cleanup();
       socket.pause();
-      resolve(buffer.subarray(0, size));
+      resolve(buffer);
     };
     const onError = (error: Error) => {
       cleanup();
@@ -108,18 +137,39 @@ async function readAcknowledgement(
       cleanup();
       reject(new Error(closeMessage));
     };
+    const onAbort = () => {
+      cleanup();
+      reject(createAbortError());
+    };
 
     socket.on("data", onData);
     socket.once("error", onError);
     socket.once("end", onEnd);
     socket.once("close", onClose);
+    signal?.addEventListener("abort", onAbort, { once: true });
     socket.resume();
 
     function cleanup() {
+      if (timer !== undefined) {
+        clearTimeout(timer);
+      }
       socket.off("data", onData);
       socket.off("error", onError);
       socket.off("end", onEnd);
       socket.off("close", onClose);
+      signal?.removeEventListener("abort", onAbort);
     }
   });
+}
+
+function corruptCrc(packet: Buffer): Buffer {
+  const corrupted = Buffer.from(packet);
+  corrupted[corrupted.byteLength - 1] ^= 0x01;
+  return corrupted;
+}
+
+function createAbortError(): Error {
+  const error = new Error("Session aborted.");
+  error.name = "AbortError";
+  return error;
 }

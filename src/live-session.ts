@@ -1,7 +1,7 @@
 import type net from "node:net";
 
 import { mapVehicleStateToAvlRecord } from "./avl-mapping";
-import { sendAvlPacket } from "./avl-session";
+import { AvlAcknowledgementTimeoutError, sendAvlPacket } from "./avl-session";
 import { getDeviceProfile } from "./device-profile";
 import { performImeiHandshake } from "./imei-handshake";
 import { resolveSimulationRoute } from "./route";
@@ -11,6 +11,12 @@ import {
   type VehicleSimulatorCheckpoint
 } from "./simulation";
 import type { AvlRecord, DrivingStyleName, RouteDefinition } from "./domain";
+import {
+  createTransmissionNoiseController,
+  type TransmissionNoiseController,
+  type TransmissionNoiseEvent,
+  type TransmissionNoiseOptions,
+} from "./transmission-noise";
 
 export interface LiveSessionLogger {
   info(message: string): void | Promise<void>;
@@ -32,6 +38,8 @@ export interface LiveSessionOptions {
   packetCount?: number;
   checkpoint?: VehicleSimulatorCheckpoint;
   acceptedRecordCount?: number;
+  noise?: TransmissionNoiseOptions;
+  ackTimeoutMs?: number;
   signal?: AbortSignal;
   logger?: LiveSessionLogger;
   getCurrentConfiguration?: () => Partial<LiveSessionConfiguration>;
@@ -66,6 +74,7 @@ export type LiveSessionEvent =
   | { kind: "imeiAccepted"; imei: string }
   | { kind: "imeiRejected"; imei: string }
   | { kind: "reconnecting"; delayMs: number; reason: string; imei: string }
+  | { kind: "noiseInjected"; noise: TransmissionNoiseEvent }
   | {
       kind: "recordAccepted";
       record: AvlRecord;
@@ -88,6 +97,8 @@ interface PendingRecord {
   record: AvlRecord;
   checkpoint: VehicleSimulatorCheckpoint;
   configuration: LiveSessionConfiguration;
+  connectionDropInjected: boolean;
+  packetCorruptionInjected: boolean;
 }
 
 interface LiveSessionState {
@@ -96,6 +107,8 @@ interface LiveSessionState {
   configuration: LiveSessionConfiguration;
   pendingRecord: PendingRecord | null;
   acceptedRecordCount: number;
+  noiseController: TransmissionNoiseController | undefined;
+  ackTimeoutMs: number;
 }
 
 const defaultLogger: LiveSessionLogger = {
@@ -118,6 +131,7 @@ export async function runLiveSession(options: LiveSessionOptions): Promise<LiveS
 
   const logger = options.logger ?? defaultLogger;
   const reconnectDelayMs = options.reconnectDelayMs ?? 5_000;
+  const ackTimeoutMs = integerAtLeast(options.ackTimeoutMs ?? 30_000, "ackTimeoutMs", 1);
   const initialConfiguration = readCurrentConfiguration(options, {
     intervalMs: options.intervalMs,
     simulationSpeed: options.simulationSpeed,
@@ -147,7 +161,9 @@ export async function runLiveSession(options: LiveSessionOptions): Promise<LiveS
     profile,
     configuration: initialConfiguration,
     pendingRecord: null,
-    acceptedRecordCount: integerAtLeast(options.acceptedRecordCount ?? 0, "acceptedRecordCount", 0)
+    acceptedRecordCount: integerAtLeast(options.acceptedRecordCount ?? 0, "acceptedRecordCount", 0),
+    noiseController: createTransmissionNoiseController(options.noise, initialConfiguration.seed),
+    ackTimeoutMs,
   };
 
   if (hasReachedPacketLimit(sessionState)) {
@@ -263,19 +279,76 @@ async function runConnectionAttempt(
           return { kind: "completed" };
         }
 
-        const record = mapVehicleStateToAvlRecord(
+        const sourceRecord = mapVehicleStateToAvlRecord(
           sessionState.simulator.next(),
           sessionState.profile
         );
+        const prepared = sessionState.noiseController?.prepareRecord(sourceRecord) ?? { record: sourceRecord };
+        if (prepared.event) {
+          await options.onEvent?.({
+            kind: "noiseInjected",
+            noise: { ...prepared.event, imei: options.imei },
+          });
+        }
         sessionState.pendingRecord = {
-          record,
+          record: prepared.record,
           checkpoint: sessionState.simulator.getCheckpoint(),
-          configuration: { ...sessionState.configuration }
+          configuration: { ...sessionState.configuration },
+          connectionDropInjected: false,
+          packetCorruptionInjected: false,
         };
       }
 
       const pendingRecord = sessionState.pendingRecord;
-      const result = await sendAvlPacket(handshake.socket, [pendingRecord.record]);
+      const latencyMs = sessionState.noiseController?.nextLatencyMs();
+      if (latencyMs !== undefined) {
+        await options.onEvent?.({
+          kind: "noiseInjected",
+          noise: {
+            kind: "latency",
+            imei: options.imei,
+            recordTimestampMs: pendingRecord.record.timestampMs,
+            data: { delayMs: latencyMs },
+          },
+        });
+        await delayWithAbort(latencyMs, options.signal);
+      }
+
+      if (!pendingRecord.connectionDropInjected && sessionState.noiseController?.shouldDropConnection()) {
+        pendingRecord.connectionDropInjected = true;
+        await options.onEvent?.({
+          kind: "noiseInjected",
+          noise: {
+            kind: "connectionDrop",
+            imei: options.imei,
+            recordTimestampMs: pendingRecord.record.timestampMs,
+            data: { probability: options.noise?.connectionDrop?.probability ?? 0 },
+          },
+        });
+        socket.destroy();
+        throw new Error("Connection dropped by transmission noise.");
+      }
+
+      let corruptCrc = false;
+      if (!pendingRecord.packetCorruptionInjected && sessionState.noiseController?.shouldCorruptPacket()) {
+        pendingRecord.packetCorruptionInjected = true;
+        corruptCrc = true;
+        await options.onEvent?.({
+          kind: "noiseInjected",
+          noise: {
+            kind: "packetCorruption",
+            imei: options.imei,
+            recordTimestampMs: pendingRecord.record.timestampMs,
+            data: { probability: options.noise?.packetCorruption?.probability ?? 0 },
+          },
+        });
+      }
+
+      const result = await sendAvlPacket(socket, [pendingRecord.record], {
+        ackTimeoutMs: sessionState.ackTimeoutMs,
+        corruptCrc,
+        signal: options.signal,
+      });
       sessionState.acceptedRecordCount += result.acceptedRecordCount;
       sessionState.pendingRecord = null;
       const acceptedContext = {
@@ -456,6 +529,10 @@ function isReconnectableSessionError(error: unknown): boolean {
 
   if (isAvlAcknowledgementMismatchError(error)) {
     return false;
+  }
+
+  if (error instanceof AvlAcknowledgementTimeoutError || error.message === "Connection dropped by transmission noise.") {
+    return true;
   }
 
   const code = "code" in error ? error.code : undefined;

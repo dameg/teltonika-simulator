@@ -94,6 +94,22 @@ describe("AVL packet session behavior", () => {
     expect(handshake.socket.destroyed).toBe(false);
   });
 
+  it("times out on an invalid CRC without retaining acknowledgement listeners", async () => {
+    const fixture = await useFixture();
+    const handshake = await performAcceptedHandshake(fixture);
+
+    await expect(sendAvlPacket(handshake.socket, [baseRecord], {
+      corruptCrc: true,
+      ackTimeoutMs: 10,
+    })).rejects.toThrow("Timed out waiting 10ms for AVL acknowledgement");
+
+    expect(await fixture.waitForAvlFrame()).toHaveLength(encodeCodec8ExtendedPacket([baseRecord]).byteLength);
+    expect(fixture.invalidAvlFrames).toHaveLength(1);
+    expect(handshake.socket.listenerCount("data")).toBe(0);
+    expect(handshake.socket.listenerCount("error")).toBe(0);
+    expect(handshake.socket.listenerCount("close")).toBe(0);
+  });
+
   async function useFixture(options?: Parameters<typeof startTeltonikaParserFixture>[0]) {
     const fixture = await startTeltonikaParserFixture(options);
     fixtures.push(fixture);

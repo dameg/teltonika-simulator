@@ -13,6 +13,7 @@ export type {
   DeviceEventMap,
   DeviceEventName,
   DeviceFailedEvent,
+  DeviceNoiseInjectedEvent,
   DeviceOptions,
   DeviceRecordAcceptedEvent,
   DeviceRejectedEvent,
@@ -22,6 +23,18 @@ export type {
   DeviceStatusChangeEvent,
   DeviceUpdate,
 } from "./types";
+export type {
+  TransmissionNoiseEvent,
+  TransmissionNoiseEventData,
+  TransmissionNoiseGpsJammingEventData,
+  TransmissionNoiseGpsJammingOptions,
+  TransmissionNoiseKind,
+  TransmissionNoiseLatencyEventData,
+  TransmissionNoiseLatencyOptions,
+  TransmissionNoiseOptions,
+  TransmissionNoiseProbabilityEventData,
+  TransmissionNoiseProbabilityOptions,
+} from "../transmission-noise";
 export type {
   DeviceProfilePresetName,
   DrivingStylePresetName,

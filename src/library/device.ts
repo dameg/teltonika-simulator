@@ -8,6 +8,7 @@ import {
 } from "../live-session";
 import { parseRouteDefinition } from "../route";
 import { simulationSpeedMultiplier } from "../simulation";
+import { normalizeTransmissionNoiseOptions, type NormalizedTransmissionNoiseOptions } from "../transmission-noise";
 import type { RouteDefinition } from "../domain";
 import type {
   DeviceConfiguration,
@@ -68,6 +69,8 @@ export class Device {
   private readonly host: string;
   private readonly port: number;
   private readonly reconnectDelayMs: number;
+  private readonly ackTimeoutMs: number;
+  private readonly noise: NormalizedTransmissionNoiseOptions | undefined;
   private configuration: DeviceConfiguration;
   private snapshot: DeviceSnapshot | undefined;
   private statusValue: DeviceStatus = "idle";
@@ -93,6 +96,12 @@ export class Device {
       deviceProfile: options.deviceProfile ?? "default-codec8e",
       packetCount: options.packetCount,
     });
+    this.ackTimeoutMs = validatePositiveInteger(options.ackTimeoutMs ?? 30_000, "ackTimeoutMs");
+    try {
+      this.noise = normalizeTransmissionNoiseOptions(options.noise, this.configuration.seed);
+    } catch (error) {
+      throw new DeviceConfigurationError(toError(error).message);
+    }
     this.snapshot = options.resumeFrom === undefined
       ? undefined
       : validateSnapshot(options.resumeFrom, this.route.metadata.id);
@@ -225,6 +234,8 @@ export class Device {
         packetCount: this.configuration.packetCount,
         checkpoint: this.snapshot?.checkpoint,
         acceptedRecordCount: this.snapshot?.acceptedRecordCount,
+        noise: this.noise,
+        ackTimeoutMs: this.ackTimeoutMs,
         signal: controller.signal,
         getCurrentConfiguration: () => ({ ...this.configuration }),
         onEvent: (event) => this.handleLiveSessionEvent(event, ready),
@@ -309,6 +320,9 @@ export class Device {
           packetHex: event.packetHex,
           context: event.context,
         });
+        return;
+      case "noiseInjected":
+        this.emit("noiseInjected", event.noise);
         return;
       case "stopped":
         this.transition("stopped");
