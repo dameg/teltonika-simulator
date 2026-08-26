@@ -66,6 +66,35 @@ Wszystkie profile używają protokołu Codec 8 Extended.
 | `pnpm run verify:package` | Sprawdza ESM, CommonJS i deklaracje typów |
 | `pnpm run db:down` | Zatrzymuje lokalną bazę danych |
 
+## Wdrożenie na VPS
+
+Na serwerze z Dockerem i wtyczką Docker Compose:
+
+```bash
+git clone <adres-repozytorium> teltonika-simulator
+cd teltonika-simulator
+cp .env.production.example .env.production
+openssl rand -hex 32
+# Wklej wynik jako POSTGRES_PASSWORD w .env.production.
+docker compose --env-file .env.production -f compose.prod.yaml up -d --build
+docker compose --env-file .env.production -f compose.prod.yaml ps
+```
+
+Dashboard nie ma uwierzytelniania, dlatego domyślnie jest dostępny tylko na
+localhost VPS-a. Otwórz tunel ze swojego komputera:
+
+```bash
+ssh -L 3000:127.0.0.1:3000 user@adres-vps
+```
+
+Następnie otwórz [http://localhost:3000](http://localhost:3000). Migracje bazy
+uruchamiają się automatycznie przed startem dashboardu. Aktualizacja aplikacji:
+
+```bash
+git pull --ff-only
+docker compose --env-file .env.production -f compose.prod.yaml up -d --build
+```
+
 ## Uruchomienie symulatora z CLI
 
 Najpierw zbuduj projekt:

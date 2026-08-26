@@ -29,6 +29,9 @@ importers:
       lucide-react:
         specifier: ^1.25.0
         version: 1.30.0(react@19.2.0)
+      node-pg-migrate:
+        specifier: ^9.0.0
+        version: 9.0.0(@types/pg@8.23.1)(pg@8.23.0)
       pg:
         specifier: ^8.23.0
         version: 8.23.0
@@ -60,9 +63,6 @@ importers:
       esbuild:
         specifier: 0.25.11
         version: 0.25.11
-      node-pg-migrate:
-        specifier: ^9.0.0
-        version: 9.0.0(@types/pg@8.23.1)(pg@8.23.0)
       tsx:
         specifier: ^4.23.1
         version: 4.23.11
