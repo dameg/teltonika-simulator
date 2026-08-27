@@ -215,6 +215,14 @@ describe("Device library API", () => {
       port: 5027,
       route: { metadata: { id: "empty" }, points: [] },
     })).toThrow();
+
+    expect(() => new Device({
+      imei: "123456789012345",
+      host: "127.0.0.1",
+      port: 5027,
+      route: presets.routes.rotterdamWarsaw,
+      ackTimeoutMs: 0,
+    })).toThrow(/ackTimeoutMs/);
   });
 
   async function useFixture(options: Parameters<typeof startTeltonikaParserFixture>[0] = {}) {

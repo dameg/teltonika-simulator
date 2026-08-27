@@ -19,8 +19,24 @@ if (esm.presets.routes.rotterdamWarsaw.metadata.id !== "rotterdam-warsaw") {
 if (typeof core.createVehicleSimulator !== "function") {
   throw new Error("The /core export is missing createVehicleSimulator");
 }
+if (typeof core.createTransmissionNoiseController !== "function") {
+  throw new Error("The /core export is missing createTransmissionNoiseController");
+}
 if (manifest.exports?.["."]?.types !== "./types/library/index.d.ts") {
   throw new Error("The package manifest does not point at the public declarations");
+}
+if (manifest.sideEffects !== false) {
+  throw new Error("The package manifest must declare sideEffects: false");
+}
+const publicDeclarations = readFileSync(join(packageDirectory, "types", "library", "index.d.ts"), "utf8");
+if (!publicDeclarations.includes("TransmissionNoiseOptions") || !publicDeclarations.includes("DeviceNoiseInjectedEvent")) {
+  throw new Error("Transmission noise public declarations are missing");
+}
+const artifactSource = ["index.js", "index.cjs", "core.js", "core.cjs"]
+  .map((file) => readFileSync(join(packageDirectory, file), "utf8"))
+  .join("\n");
+if (/@nestjs\/|react|postgres|dashboard\//i.test(artifactSource)) {
+  throw new Error("The published artifact must not import dashboard frameworks or PostgreSQL");
 }
 if (!existsSync(join(packageDirectory, "README.md"))) {
   throw new Error("The package README is missing from the published artifact");
@@ -35,6 +51,7 @@ try {
   writeFileSync(join(tempDirectory, "consumer.ts"), `
 import { Device, presets } from "@company/teltonika-simulator";
 import { createVehicleSimulator } from "@company/teltonika-simulator/core";
+import type { TransmissionNoiseOptions } from "@company/teltonika-simulator";
 
 const device = new Device({
   imei: "123456789012345",
@@ -43,8 +60,10 @@ const device = new Device({
   route: presets.routes.rotterdamWarsaw,
 });
 device.update({ drivingStyle: presets.drivingStyles.aggressive });
+const noise: TransmissionNoiseOptions = { packetCorruption: { probability: 0.5 } };
 void device.done;
 void createVehicleSimulator;
+void noise;
 `, "utf8");
   writeFileSync(join(tempDirectory, "tsconfig.json"), JSON.stringify({
     compilerOptions: {

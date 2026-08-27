@@ -4,6 +4,7 @@ import type {
   LiveSessionRecordAcceptedContext,
 } from "../live-session";
 import type { VehicleSimulatorCheckpoint } from "../simulation";
+import type { TransmissionNoiseEvent, TransmissionNoiseOptions } from "../transmission-noise";
 
 export type DeviceStatus =
   | "idle"
@@ -34,6 +35,8 @@ export interface DeviceOptions {
   simulationSpeed?: number;
   packetCount?: number;
   resumeFrom?: DeviceSnapshot;
+  noise?: TransmissionNoiseOptions;
+  ackTimeoutMs?: number;
 }
 
 export interface DeviceUpdate {
@@ -67,6 +70,8 @@ export interface DeviceRecordAcceptedEvent {
   context: LiveSessionRecordAcceptedContext;
 }
 
+export type DeviceNoiseInjectedEvent = TransmissionNoiseEvent;
+
 export interface DeviceCompletionEvent {
   snapshot: DeviceSnapshot | undefined;
 }
@@ -84,6 +89,7 @@ export interface DeviceEventMap {
   connected: DeviceConnectedEvent;
   reconnecting: DeviceReconnectingEvent;
   recordAccepted: DeviceRecordAcceptedEvent;
+  noiseInjected: DeviceNoiseInjectedEvent;
   stopped: DeviceCompletionEvent;
   completed: DeviceCompletionEvent;
   rejected: DeviceRejectedEvent;

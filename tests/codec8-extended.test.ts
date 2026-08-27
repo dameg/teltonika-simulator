@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
-import { crc16Ibm, encodeCodec8ExtendedPacket, encodeCodec8ExtendedRecord } from "../src";
+import { crc16Ibm, decodeCodec8ExtendedPacket, encodeCodec8ExtendedPacket, encodeCodec8ExtendedRecord } from "../src";
 import type { AvlRecord } from "../src";
 
 const baseRecord = {
@@ -105,6 +105,56 @@ describe("Codec 8 Extended AVL record encoding", () => {
     expect(packet.readUInt32BE(8 + dataLength)).toBe(crc16Ibm(dataField));
   });
 
+  it("matches Teltonika's official Codec 8 Extended one-record TCP vector", () => {
+    const record = {
+      timestampMs: 1_560_166_592_000,
+      priority: 1,
+      gps: {
+        longitude: 0,
+        latitude: 0,
+        altitudeMeters: 0,
+        headingDegrees: 0,
+        satellites: 0,
+        speedKph: 0,
+      },
+      eventIoId: 1,
+      io: {
+        oneByte: [{ id: 1, value: 1 }],
+        twoBytes: [{ id: 17, value: 29 }],
+        fourBytes: [{ id: 16, value: 22_949_000 }],
+        eightBytes: [
+          { id: 11, value: 0x000000003544c87an },
+          { id: 14, value: 0x000000001dd7e06an },
+        ],
+        xBytes: [],
+      },
+    } satisfies AvlRecord;
+    const expectedHex = "000000000000004A8E010000016B412CEE000100000000000000000000000000000000010005000100010100010011001D00010010015E2C880002000B000000003544C87A000E000000001DD7E06A00000100002994";
+    const packet = encodeCodec8ExtendedPacket([record]);
+
+    expect(packet.toString("hex").toUpperCase()).toBe(expectedHex);
+    expect(packet.readUInt32BE(packet.length - 4)).toBe(crc16Ibm(packet.subarray(8, -4)));
+    expect(decodeCodec8ExtendedPacket(packet)).toEqual({
+      ok: true,
+      packet: expect.objectContaining({ records: [record] }),
+    });
+  });
+
+  it("rejects complete TCP packets larger than Teltonika's generic 1280-byte limit", () => {
+    const oversized = {
+      ...baseRecord,
+      io: {
+        oneByte: [],
+        twoBytes: [],
+        fourBytes: [],
+        eightBytes: [],
+        xBytes: [{ id: 1, value: new Uint8Array(1_300) }],
+      },
+    } satisfies AvlRecord;
+
+    expect(() => encodeCodec8ExtendedPacket([oversized])).toThrow("must not exceed 1280 bytes");
+  });
+
   it("rejects empty packets", () => {
     expect(() => encodeCodec8ExtendedPacket([])).toThrow("packet must contain from 1 to 255 AVL records");
   });
@@ -132,6 +182,12 @@ describe("Codec 8 Extended AVL record encoding", () => {
     } satisfies AvlRecord;
 
     expect(() => encodeCodec8ExtendedRecord(record)).toThrow("longitude must be a signed 32-bit integer");
+  });
+
+  it("rejects priorities outside Teltonika's defined low, high, and panic values", () => {
+    const record = { ...baseRecord, priority: 3 } as unknown as AvlRecord;
+
+    expect(() => encodeCodec8ExtendedRecord(record)).toThrow("priority must be 0, 1, or 2");
   });
 
   it("keeps codec record encoding independent from route, simulation, and TCP modules", () => {
