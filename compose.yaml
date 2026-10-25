@@ -1,39 +1,15 @@
 services:
-  postgres:
-    image: postgres:17-alpine
+  simulator:
+    build: .
     environment:
-      POSTGRES_DB: ${POSTGRES_DB:-teltonika}
-      POSTGRES_USER: ${POSTGRES_USER:-teltonika}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-teltonika-local}
-    ports:
-      - "${POSTGRES_PORT:-5432}:5432"
-    volumes:
-      - teltonika-postgres-data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
-      start_period: 5s
+      TELTONIKA_HOST: ${TELTONIKA_HOST:?set TELTONIKA_HOST}
+      TELTONIKA_PORT: ${TELTONIKA_PORT:-5027}
+      TELTONIKA_IMEIS: ${TELTONIKA_IMEIS:?set TELTONIKA_IMEIS}
+      TELTONIKA_DEVICE_PROFILE: ${TELTONIKA_DEVICE_PROFILE:-default-codec8e}
+      TELTONIKA_ROUTE_FILE: ${TELTONIKA_ROUTE_FILE:-routes/rotterdam-genoa.route.json}
+      TELTONIKA_DRIVING_STYLE: ${TELTONIKA_DRIVING_STYLE:-normal}
+      TELTONIKA_SEED: ${TELTONIKA_SEED:-1}
+      TELTONIKA_INTERVAL_MS: ${TELTONIKA_INTERVAL_MS:-1000}
+      TELTONIKA_RECONNECT_DELAY_MS: ${TELTONIKA_RECONNECT_DELAY_MS:-5000}
+    init: true
     restart: unless-stopped
-
-  postgres-test:
-    image: postgres:17-alpine
-    profiles: ["test"]
-    environment:
-      POSTGRES_DB: teltonika_test
-      POSTGRES_USER: teltonika_test
-      POSTGRES_PASSWORD: teltonika-test
-    ports:
-      - "${POSTGRES_TEST_PORT:-5433}:5432"
-    tmpfs:
-      - /var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
-      interval: 2s
-      timeout: 5s
-      retries: 15
-      start_period: 5s
-
-volumes:
-  teltonika-postgres-data:

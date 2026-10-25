@@ -129,47 +129,15 @@ describe("configuration parsing", () => {
     });
   });
 
-  it("parses dashboard mode with default web listener and accepted imei handshakes", () => {
-    const result = parseConfig(["dashboard", "--host", "0.0.0.0", "--port", "5055"], {});
-
-    expect(result.kind).toBe("dashboard");
-    if (result.kind !== "dashboard") {
-      throw new Error("expected dashboard config");
-    }
-
-    expect(result.config).toEqual({
-      host: "0.0.0.0",
-      port: 5055,
-      webHost: "127.0.0.1",
-      webPort: 3000,
-      acceptImei: true
-    });
+  it("describes device profiles and one session per IMEI", () => {
+    expect(helpText).toContain("--device-profile");
+    expect(helpText).toContain("Each IMEI starts an independent device session");
+    expect(helpText).not.toContain("dashboard");
   });
 
-  it("advertises the dashboard command as the NestJS shell", () => {
-    expect(helpText).toContain("Start the NestJS dashboard shell");
-    expect(helpText).not.toContain("Start the dashboard parser backend");
-  });
-
-  it("lets dashboard flags override environment variables", () => {
-    const result = parseConfig(["dashboard", "--host", "127.0.0.1", "--port", "5056", "--accept-imei", "false"], {
-      TELTONIKA_HOST: "env-host",
-      TELTONIKA_PORT: "5050",
-      TELTONIKA_DASHBOARD_WEB_HOST: "0.0.0.0",
-      TELTONIKA_DASHBOARD_WEB_PORT: "8080",
-      TELTONIKA_DASHBOARD_ACCEPT_IMEI: "true"
-    });
-
-    if (result.kind !== "dashboard") {
-      throw new Error("expected dashboard config");
-    }
-
-    expect(result.config).toEqual({
-      host: "127.0.0.1",
-      port: 5056,
-      webHost: "0.0.0.0",
-      webPort: 8080,
-      acceptImei: false
-    });
+  it("rejects the removed dashboard command", () => {
+    expect(() => parseConfig(["dashboard", "--host", "127.0.0.1", "--port", "5055"], {})).toThrow(
+      /Unknown option: dashboard/,
+    );
   });
 });

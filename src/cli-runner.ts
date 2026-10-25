@@ -1,5 +1,4 @@
 import { parseConfig } from "./config";
-import { startDashboardServer } from "./dashboard/main";
 import { createDryRunOutput } from "./dry-run";
 import { runMultiDeviceRuntime } from "./multi-device-runtime";
 
@@ -19,7 +18,7 @@ export async function runCli(
     return 0;
   }
 
-  if (result.kind === "simulator" && result.config.dryRun) {
+  if (result.config.dryRun) {
     const output = createDryRunOutput(result.config);
     if (output.stderrLines.length > 0) {
       io.stderr.write(`${output.stderrLines.join("\n")}\n`);
@@ -34,55 +33,31 @@ export async function runCli(
   const cleanupProcessHooks = registerTerminationHooks(controller);
 
   try {
-    if (result.kind === "dashboard") {
-      const server = await startDashboardServer({
-        host: result.config.host,
-        port: result.config.port,
-      });
-      io.stdout.write(`Dashboard URL: ${server.url}\n`);
-
-      try {
-        await waitForAbort(controller.signal);
-      } finally {
-        await server.close();
-      }
-    } else {
-      await runMultiDeviceRuntime({
-        host: result.config.host,
-        port: result.config.port,
-        imeis: result.config.imeis,
-        intervalMs: result.config.intervalMs,
-        reconnectDelayMs: result.config.reconnectDelayMs,
-        routeFile: result.config.routeFile,
-        drivingStyle: result.config.drivingStyle,
-        seed: result.config.seed,
-        deviceProfile: result.config.deviceProfile,
-        signal: controller.signal,
-        logger: {
-          info(message) {
-            io.stderr.write(`${message}\n`);
-          },
-          error(message) {
-            io.stderr.write(`${message}\n`);
-          },
+    await runMultiDeviceRuntime({
+      host: result.config.host,
+      port: result.config.port,
+      imeis: result.config.imeis,
+      intervalMs: result.config.intervalMs,
+      reconnectDelayMs: result.config.reconnectDelayMs,
+      routeFile: result.config.routeFile,
+      drivingStyle: result.config.drivingStyle,
+      seed: result.config.seed,
+      deviceProfile: result.config.deviceProfile,
+      signal: controller.signal,
+      logger: {
+        info(message) {
+          io.stderr.write(`${message}\n`);
         },
-      });
-    }
+        error(message) {
+          io.stderr.write(`${message}\n`);
+        },
+      },
+    });
   } finally {
     cleanupProcessHooks();
   }
 
   return 0;
-}
-
-function waitForAbort(signal: AbortSignal): Promise<void> {
-  if (signal.aborted) {
-    return Promise.resolve();
-  }
-
-  return new Promise((resolve) => {
-    signal.addEventListener("abort", () => resolve(), { once: true });
-  });
 }
 
 function registerTerminationHooks(controller: AbortController): () => void {

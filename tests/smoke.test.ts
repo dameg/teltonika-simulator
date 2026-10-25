@@ -28,8 +28,8 @@ describe("project bootstrap", () => {
 
     expect(exitCode).toBe(0);
     expect(stdout.join("\n")).toContain("Usage:");
-    expect(stdout.join("\n")).toContain("dashboard");
-    expect(stdout.join("\n")).toContain("Start the NestJS dashboard shell");
+    expect(stdout.join("\n")).toContain("--device-profile");
+    expect(stdout.join("\n")).not.toContain("dashboard");
     expect(stderr).toEqual([]);
   });
 });

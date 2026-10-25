@@ -8,11 +8,8 @@
     "outDir": "dist",
     "strict": true,
     "esModuleInterop": true,
-    "experimentalDecorators": true,
-    "emitDecoratorMetadata": true,
     "forceConsistentCasingInFileNames": true,
-    "jsx": "react-jsx",
-    "lib": ["ES2022", "DOM"],
+    "lib": ["ES2022"],
     "skipLibCheck": true,
     "types": ["node", "vitest/globals"]
   },

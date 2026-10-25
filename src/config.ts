@@ -15,17 +15,8 @@ export interface SimulatorConfig {
   packetCount?: number;
 }
 
-export interface DashboardConfig {
-  host: string;
-  port: number;
-  webHost: string;
-  webPort: number;
-  acceptImei: boolean;
-}
-
 export const helpText = `Usage:
   teltonika-simulator --host <host> --port <port> --imei <imei>
-  teltonika-simulator dashboard --host <host> --port <port>
 
 Simulator options:
   --host <host>                    Parser host
@@ -40,14 +31,6 @@ Simulator options:
   --dry-run                        Print packets without opening TCP
   --count, --packet-count <count>  Number of packets to emit
 
-Dashboard options:
-  dashboard                        Start the NestJS dashboard shell
-  --host <host>                    HTTP bind host
-  --port <port>                    HTTP bind port
-  --web-host <host>                Reserved for legacy parser dashboard wiring
-  --web-port <port>                Reserved for legacy parser dashboard wiring
-  --accept-imei <boolean>          Reserved for legacy parser dashboard wiring
-
 General:
   --help                           Show this help
 
@@ -55,8 +38,10 @@ Environment:
   TELTONIKA_HOST, TELTONIKA_PORT, TELTONIKA_IMEIS, TELTONIKA_IMEI, TELTONIKA_INTERVAL_MS,
   TELTONIKA_RECONNECT_DELAY_MS, TELTONIKA_ROUTE_FILE, TELTONIKA_DRIVING_STYLE,
   TELTONIKA_SEED, TELTONIKA_DEVICE_PROFILE, TELTONIKA_DRY_RUN,
-  TELTONIKA_PACKET_COUNT, TELTONIKA_DASHBOARD_WEB_HOST,
-  TELTONIKA_DASHBOARD_WEB_PORT, TELTONIKA_DASHBOARD_ACCEPT_IMEI`;
+  TELTONIKA_PACKET_COUNT
+
+Each IMEI starts an independent device session. Repeat --imei or pass a
+comma-separated TELTONIKA_IMEIS list to spawn more than one vehicle.`;
 
 interface RawConfig {
   host?: string;
@@ -70,14 +55,10 @@ interface RawConfig {
   deviceProfile?: string;
   dryRun?: string;
   packetCount?: string;
-  webHost?: string;
-  webPort?: string;
-  acceptImei?: string;
 }
 
 export type ParseResult =
   | { kind: "simulator"; config: SimulatorConfig }
-  | { kind: "dashboard"; config: DashboardConfig }
   | { kind: "help"; help: string };
 
 export function parseConfig(argv = process.argv.slice(2), env = process.env): ParseResult {
@@ -85,11 +66,7 @@ export function parseConfig(argv = process.argv.slice(2), env = process.env): Pa
     return { kind: "help", help: helpText };
   }
 
-  const mode = argv[0] === "dashboard" ? "dashboard" : "simulator";
-  const args = mode === "dashboard" ? argv.slice(1) : argv;
-  const raw = mergeRawConfig(readEnv(env), readArgv(args, mode));
-
-  return mode === "dashboard" ? parseDashboardConfig(raw) : parseSimulatorConfig(raw);
+  return parseSimulatorConfig(mergeRawConfig(readEnv(env), readArgv(argv)));
 }
 
 function parseSimulatorConfig(raw: RawConfig): ParseResult {
@@ -121,19 +98,6 @@ function parseSimulatorConfig(raw: RawConfig): ParseResult {
   };
 }
 
-function parseDashboardConfig(raw: RawConfig): ParseResult {
-  return {
-    kind: "dashboard",
-    config: {
-      host: required(raw.host, "host"),
-      port: parseInteger(raw.port, "port", 1, 65535),
-      webHost: raw.webHost ?? "127.0.0.1",
-      webPort: parseInteger(raw.webPort ?? "3000", "web-port", 1, 65535),
-      acceptImei: parseBoolean(raw.acceptImei ?? "true", "accept-imei")
-    }
-  };
-}
-
 function readEnv(env: NodeJS.ProcessEnv): RawConfig {
   return {
     host: env.TELTONIKA_HOST,
@@ -146,14 +110,11 @@ function readEnv(env: NodeJS.ProcessEnv): RawConfig {
     seed: env.TELTONIKA_SEED,
     deviceProfile: env.TELTONIKA_DEVICE_PROFILE,
     dryRun: env.TELTONIKA_DRY_RUN,
-    packetCount: env.TELTONIKA_PACKET_COUNT,
-    webHost: env.TELTONIKA_DASHBOARD_WEB_HOST,
-    webPort: env.TELTONIKA_DASHBOARD_WEB_PORT,
-    acceptImei: env.TELTONIKA_DASHBOARD_ACCEPT_IMEI
+    packetCount: env.TELTONIKA_PACKET_COUNT
   };
 }
 
-function readArgv(argv: string[], mode: "simulator" | "dashboard"): Partial<RawConfig> {
+function readArgv(argv: string[]): Partial<RawConfig> {
   const raw: RawConfig = { imeis: [] };
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -175,91 +136,43 @@ function readArgv(argv: string[], mode: "simulator" | "dashboard"): Partial<RawC
         index += inlineValue === undefined ? 1 : 0;
         break;
       case "--imei":
-        if (mode !== "simulator") {
-          throw new Error(`Unknown option: ${arg}`);
-        }
         raw.imeis.push(takeValue(flag, value));
         index += inlineValue === undefined ? 1 : 0;
         break;
       case "--interval-ms":
-        if (mode !== "simulator") {
-          throw new Error(`Unknown option: ${arg}`);
-        }
         raw.intervalMs = takeValue(flag, value);
         index += inlineValue === undefined ? 1 : 0;
         break;
       case "--reconnect-delay-ms":
-        if (mode !== "simulator") {
-          throw new Error(`Unknown option: ${arg}`);
-        }
         raw.reconnectDelayMs = takeValue(flag, value);
         index += inlineValue === undefined ? 1 : 0;
         break;
       case "--route-file":
-        if (mode !== "simulator") {
-          throw new Error(`Unknown option: ${arg}`);
-        }
         raw.routeFile = takeValue(flag, value);
         index += inlineValue === undefined ? 1 : 0;
         break;
       case "--driving-style":
-        if (mode !== "simulator") {
-          throw new Error(`Unknown option: ${arg}`);
-        }
         raw.drivingStyle = takeValue(flag, value);
         index += inlineValue === undefined ? 1 : 0;
         break;
       case "--seed":
-        if (mode !== "simulator") {
-          throw new Error(`Unknown option: ${arg}`);
-        }
         raw.seed = takeValue(flag, value);
         index += inlineValue === undefined ? 1 : 0;
         break;
       case "--device-profile":
-        if (mode !== "simulator") {
-          throw new Error(`Unknown option: ${arg}`);
-        }
         raw.deviceProfile = takeValue(flag, value);
         index += inlineValue === undefined ? 1 : 0;
         break;
       case "--dry-run":
-        if (mode !== "simulator") {
-          throw new Error(`Unknown option: ${arg}`);
-        }
         raw.dryRun = inlineValue ?? "true";
         break;
       case "--count":
       case "--packet-count":
-        if (mode !== "simulator") {
-          throw new Error(`Unknown option: ${arg}`);
-        }
         raw.packetCount = takeValue(flag, value);
         index += inlineValue === undefined ? 1 : 0;
         break;
-      case "--web-host":
-        if (mode !== "dashboard") {
-          throw new Error(`Unknown option: ${arg}`);
-        }
-        raw.webHost = takeValue(flag, value);
-        index += inlineValue === undefined ? 1 : 0;
-        break;
-      case "--web-port":
-        if (mode !== "dashboard") {
-          throw new Error(`Unknown option: ${arg}`);
-        }
-        raw.webPort = takeValue(flag, value);
-        index += inlineValue === undefined ? 1 : 0;
-        break;
-      case "--accept-imei":
-        if (mode !== "dashboard") {
-          throw new Error(`Unknown option: ${arg}`);
-        }
-        raw.acceptImei = takeValue(flag, value);
-        index += inlineValue === undefined ? 1 : 0;
-        break;
       default:
-        throw new Error(`Unknown option: ${arg}`);
+        throw new Error(`Unknown option: ${flag}`);
     }
   }
 
